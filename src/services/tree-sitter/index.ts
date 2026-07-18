@@ -113,6 +113,11 @@ export async function parseSourceCodeDefinitionsForFile(
 		return undefined
 	}
 
+	// Plain text files have no structural definitions to extract
+	if (ext === ".txt") {
+		return undefined
+	}
+
 	// Special case for markdown files
 	if (ext === ".md" || ext === ".markdown") {
 		// Check if we have permission to access this file
