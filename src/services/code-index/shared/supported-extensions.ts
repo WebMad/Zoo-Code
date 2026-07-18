@@ -19,6 +19,7 @@ export const scannerExtensions = allExtensions
  * Note: Do NOT remove parser cases from languageParser.ts as they may be used elsewhere
  */
 export const fallbackExtensions = [
+	".txt", // Plain text - no tree-sitter parser needed
 	".vb", // Visual Basic .NET - no dedicated WASM parser
 	".scala", // Scala - uses fallback chunking instead of Lua query workaround
 	".swift", // Swift - uses fallback chunking due to parser instability

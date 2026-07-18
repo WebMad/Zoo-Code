@@ -66,6 +66,8 @@ const extensions = [
 	// Markdown
 	"md",
 	"markdown",
+	// Plain text
+	"txt",
 	// JSON
 	"json",
 	// CSS
