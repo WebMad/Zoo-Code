@@ -267,18 +267,18 @@ describe("CodeParser", () => {
 	})
 
 	describe("_chunkTextByLines", () => {
-		it("should not emit a chunk whose segment hash has already been seen", async () => {
+		it("should not emit a chunk whose segment hash has already been seen", () => {
 			const lines = ["Fallback content long enough to produce a chunk without being filtered out."]
 			const seenSegmentHashes = new Set<string>()
 
-			const firstResult = await parser["_chunkTextByLines"](
+			const firstResult = parser["_chunkTextByLines"](
 				lines,
 				"manual.txt",
 				"hash",
 				"fallback_chunk",
 				seenSegmentHashes,
 			)
-			const duplicateResult = await parser["_chunkTextByLines"](
+			const duplicateResult = parser["_chunkTextByLines"](
 				lines,
 				"manual.txt",
 				"hash",
