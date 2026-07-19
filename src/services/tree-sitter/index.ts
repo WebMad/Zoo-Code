@@ -5,6 +5,7 @@ import { fileExistsAtPath } from "../../utils/fs"
 import { parseMarkdown } from "./markdownParser"
 import { RooIgnoreController } from "../../core/ignore/RooIgnoreController"
 import { QueryCapture } from "web-tree-sitter"
+import { isFallbackExtension } from "../shared/fallback-extensions"
 
 // Private constant
 const DEFAULT_MIN_COMPONENT_LINES_VALUE = 4
@@ -113,8 +114,8 @@ export async function parseSourceCodeDefinitionsForFile(
 		return undefined
 	}
 
-	// Plain text files have no structural definitions to extract
-	if (ext === ".txt") {
+	// Fallback files have no structural definitions to extract
+	if (isFallbackExtension(ext)) {
 		return undefined
 	}
 

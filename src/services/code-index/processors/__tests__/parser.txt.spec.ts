@@ -33,10 +33,26 @@ describe("CodeParser - plain text support", () => {
 			end_line: 3,
 			content,
 			fileHash: "txt-file-hash",
+			segmentHash: expect.any(String),
 		})
 	})
 
-	it("matches uppercase .TXT extensions", () => {
+	it("parses uppercase .TXT extensions", async () => {
 		expect(shouldUseFallbackChunking(".TXT")).toBe(true)
+
+		const content = "Uppercase plain-text extension content long enough to produce a fallback chunk."
+		const blocks = await new CodeParser().parseFile("manual.TXT", {
+			content,
+			fileHash: "uppercase-txt-file-hash",
+		})
+
+		expect(blocks).toHaveLength(1)
+		expect(blocks[0]).toMatchObject({
+			file_path: "manual.TXT",
+			type: "fallback_chunk",
+			content,
+			fileHash: "uppercase-txt-file-hash",
+			segmentHash: expect.any(String),
+		})
 	})
 })
