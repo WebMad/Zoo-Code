@@ -16,12 +16,12 @@ import * as fs from "fs/promises"
 import { loadRequiredLanguageParsers } from "../languageParser"
 import { parseSourceCodeDefinitionsForFile } from "../index"
 
-describe("Fallback Extension Integration Tests", () => {
+describe("Non-structural Extension Integration Tests", () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 	})
 
-	it.each(["manual.txt", "legacy.vb", "service.scala", "client.swift"])(
+	it.each(["manual.txt", "legacy.vb"])(
 		"returns undefined for %s without loading a tree-sitter parser",
 		async (filePath) => {
 			const result = await parseSourceCodeDefinitionsForFile(filePath)
