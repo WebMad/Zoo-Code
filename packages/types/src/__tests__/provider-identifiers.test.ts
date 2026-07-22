@@ -137,6 +137,27 @@ describe("provider identifiers", () => {
 		expect(isInternalProvider("unknown-provider")).toBe(false)
 		expect(isCustomProvider("unknown-provider")).toBe(false)
 		expect(isFauxProvider("unknown-provider")).toBe(false)
+
+		const categoryRepresentatives = [
+			providerIdentifiers.openrouter,
+			providerIdentifiers.ollama,
+			providerIdentifiers.vscodeLm,
+			providerIdentifiers.openai,
+			providerIdentifiers.fakeAi,
+		]
+		const categoryGuards = [
+			isDynamicProvider,
+			isLocalProvider,
+			isInternalProvider,
+			isCustomProvider,
+			isFauxProvider,
+		]
+
+		for (const [guardIndex, guard] of categoryGuards.entries()) {
+			for (const [identifierIndex, identifier] of categoryRepresentatives.entries()) {
+				expect(guard(identifier)).toBe(guardIndex === identifierIndex)
+			}
+		}
 	})
 
 	it("keeps active and retired providers separate", () => {
