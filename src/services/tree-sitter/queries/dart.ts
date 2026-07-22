@@ -4,34 +4,21 @@ export default `
 (class_definition
   name: (identifier) @name) @definition.class
 
-(method_signature
-  (function_signature)) @definition.method
+(class_definition
+  (mixin_application_class
+    (identifier) @name)) @definition.class
 
 (type_alias
   (type_identifier) @name) @definition.type
 
-(method_signature
-  (getter_signature
-    name: (identifier) @name)) @definition.method
-
-(method_signature
-  (setter_signature
-    name: (identifier) @name)) @definition.method
-
-(method_signature
+(declaration
   (function_signature
     name: (identifier) @name)) @definition.method
 
-(method_signature
-  (factory_constructor_signature
-    (identifier) @name)) @definition.method
+(redirecting_factory_constructor_signature
+  (identifier) @name) @definition.method
 
-(method_signature
-  (constructor_signature
-    name: (identifier) @name)) @definition.method
-
-(method_signature
-  (operator_signature)) @definition.method
+(method_signature) @definition.method
 
 (constructor_signature
   name: (identifier) @name) @definition.method
@@ -60,6 +47,7 @@ export default `
   (setter_signature
     name: (identifier) @name) @definition.function)
 
-(function_signature
-  name: (identifier) @name) @definition.function
+(program
+  (function_signature
+    name: (identifier) @name) @definition.function)
 `

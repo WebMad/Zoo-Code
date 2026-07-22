@@ -272,9 +272,11 @@ function processCaptures(captures: QueryCapture[], lines: string[], language: st
 			if (node.parent && node.parent.lastChild) {
 				const contextEnd = node.parent.lastChild.endPosition.row
 				const contextSpan = contextEnd - node.parent.startPosition.row + 1
+				const hasDistinctContextStart = node.parent.startPosition.row !== startLine
 
-				// Only include context if it spans multiple lines
-				if (contextSpan >= getMinComponentLines()) {
+				// Only include context when it adds a distinct source line. A parent
+				// starting on the definition line would echo the same declaration.
+				if (hasDistinctContextStart && contextSpan >= getMinComponentLines()) {
 					// Add the full range first
 					const rangeKey = `${node.parent.startPosition.row}-${contextEnd}`
 					if (!processedLines.has(rangeKey)) {
