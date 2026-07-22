@@ -70,6 +70,18 @@ describe("parseSourceCodeDefinitionsForFile with Dart", () => {
 		expect(result).not.toMatch(/int inner\(\)/)
 	})
 
+	it("includes a multiline top-level function body without duplicating its declaration", async () => {
+		const content = `int add(int left, int right) {
+		  final result = left + right;
+		  return result;
+		}`
+
+		const result = await testParseSourceCodeDefinitions("/test/file.dart", content, dartOptions)
+		const addDefinitions = result?.split("\n").filter((line) => line.includes("int add(")) ?? []
+
+		expect(addDefinitions).toEqual(["1--4 | int add(int left, int right) {"])
+	})
+
 	it("should capture common Dart declarations", async () => {
 		const result = await testParseSourceCodeDefinitions("/test/file.dart", sampleDartContent, dartOptions)
 		const definitionLines = result?.split("\n").filter((line) => line.includes(" | ")) ?? []

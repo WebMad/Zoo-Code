@@ -230,9 +230,14 @@ function processCaptures(captures: QueryCapture[], lines: string[], language: st
 		const definitionNode = name.includes("name") ? node.parent : node
 		if (!definitionNode) return
 
+		// Some grammars represent a definition's body as the captured signature's
+		// next sibling. Include that adjacent body in the definition range.
+		const trailingDefinitionBody =
+			definitionNode.nextSibling?.type === "function_body" ? definitionNode.nextSibling : undefined
+
 		// Get the start and end lines of the full definition
 		const startLine = definitionNode.startPosition.row
-		const endLine = definitionNode.endPosition.row
+		const endLine = trailingDefinitionBody?.endPosition.row ?? definitionNode.endPosition.row
 		const lineCount = endLine - startLine + 1
 
 		// Skip components that don't span enough lines
