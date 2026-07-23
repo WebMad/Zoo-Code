@@ -64,6 +64,8 @@ import { zooGatewayDefaultModelId } from "./zoo-gateway.js"
 import type { ProviderName } from "../provider-settings.js"
 import { providerIdentifiers } from "../provider-identifiers.js"
 
+const NO_DEFAULT_MODEL_ID = ""
+
 /**
  * Get the default model ID for a given provider.
  * This function returns only the provider's default model ID, without considering user configuration.
@@ -101,17 +103,16 @@ export function getProviderDefaultModelId(
 		case providerIdentifiers.zai:
 			return options?.isChina ? mainlandZAiDefaultModelId : internationalZAiDefaultModelId
 		case providerIdentifiers.openaiNative:
+			// TODO(#992): Replace this stale fallback with openAiNativeDefaultModelId.
 			return "gpt-4o" // Based on openai-native patterns
 		case providerIdentifiers.openaiCodex:
 			return openAiCodexDefaultModelId
 		case providerIdentifiers.mistral:
 			return mistralDefaultModelId
 		case providerIdentifiers.openai:
-			return "" // OpenAI provider uses custom model configuration
 		case providerIdentifiers.ollama:
-			return "" // Ollama uses dynamic model selection
 		case providerIdentifiers.lmstudio:
-			return "" // LMStudio uses dynamic model selection
+			return NO_DEFAULT_MODEL_ID
 		case providerIdentifiers.vscodeLm:
 			return vscodeLlmDefaultModelId
 		case providerIdentifiers.sambanova:
