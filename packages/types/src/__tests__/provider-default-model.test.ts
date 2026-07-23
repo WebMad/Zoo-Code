@@ -16,6 +16,7 @@ import { providerIdentifiers } from "../provider-identifiers.js"
 import {
 	anthropicDefaultModelId,
 	getProviderDefaultModelId,
+	internationalZAiDefaultModelId,
 	mainlandZAiDefaultModelId,
 	openRouterDefaultModelId,
 	vscodeLlmDefaultModelId,
@@ -32,6 +33,7 @@ describe("getProviderDefaultModelId", () => {
 
 	it("preserves region-dependent defaults", () => {
 		expect(getProviderDefaultModelId(providerIdentifiers.zai, { isChina: true })).toBe(mainlandZAiDefaultModelId)
+		expect(getProviderDefaultModelId(providerIdentifiers.zai)).toBe(internationalZAiDefaultModelId)
 	})
 
 	it.each([providerIdentifiers.openai, providerIdentifiers.ollama, providerIdentifiers.lmstudio])(
