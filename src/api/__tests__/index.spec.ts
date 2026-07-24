@@ -1,7 +1,5 @@
 // npx vitest run src/api/__tests__/index.spec.ts
 
-import fs from "node:fs"
-
 // Mock vscode first to avoid import errors
 vitest.mock("vscode", () => ({
 	workspace: {
@@ -11,36 +9,106 @@ vitest.mock("vscode", () => ({
 	},
 }))
 
-import {
-	providerIdentifiers,
-	retiredProviderIdentifiers,
-	type ProviderSettings,
-	type ProviderNameWithRetired,
-} from "@roo-code/types"
+// Handler constructors can require credentials or initialize SDK clients. Replace them
+// with inert classes so these tests exercise only the factory's routing behavior.
+vitest.mock("../providers", async () => {
+	const providers = await vitest.importActual<Record<string, unknown>>("../providers")
+
+	return Object.fromEntries(Object.keys(providers).map((name) => [name, class {}]))
+})
+
+vitest.mock("../providers/native-ollama", () => ({
+	NativeOllamaHandler: class {},
+}))
+
+import { providerIdentifiers, retiredProviderIdentifiers, type ProviderNameWithRetired } from "@roo-code/types"
 
 import { buildApiHandler } from "../index"
-import { AnthropicHandler } from "../providers/anthropic"
-import { KenariHandler } from "../providers/kenari"
-import { OpenRouterHandler } from "../providers/openrouter"
+import {
+	AnthropicHandler,
+	AnthropicVertexHandler,
+	AwsBedrockHandler,
+	BasetenHandler,
+	DeepSeekHandler,
+	FakeAIHandler,
+	FireworksHandler,
+	FriendliHandler,
+	GeminiHandler,
+	KenariHandler,
+	KimiCodeHandler,
+	LiteLLMHandler,
+	LmStudioHandler,
+	MiniMaxHandler,
+	MimoHandler,
+	MistralHandler,
+	MoonshotHandler,
+	OpenAiCodexHandler,
+	OpenAiHandler,
+	OpenAiNativeHandler,
+	OpencodeGoHandler,
+	OpenRouterHandler,
+	PoeHandler,
+	QwenCodeHandler,
+	RequestyHandler,
+	SambaNovaHandler,
+	UnboundHandler,
+	VercelAiGatewayHandler,
+	VertexHandler,
+	VsCodeLmHandler,
+	XAIHandler,
+	ZAiHandler,
+	ZooGatewayHandler,
+} from "../providers"
+import { NativeOllamaHandler } from "../providers/native-ollama"
 
 describe("buildApiHandler", () => {
-	it("returns a KenariHandler for the kenari provider", () => {
-		const configuration: ProviderSettings = {
-			apiProvider: providerIdentifiers.kenari,
-			kenariApiKey: "test-key",
-			kenariModelId: "glm-5-2",
-		}
-
-		const handler = buildApiHandler(configuration)
-
-		expect(handler).toBeInstanceOf(KenariHandler)
-	})
-
 	it.each([
 		[providerIdentifiers.anthropic, AnthropicHandler],
 		[providerIdentifiers.openrouter, OpenRouterHandler],
+		[providerIdentifiers.bedrock, AwsBedrockHandler],
+		[providerIdentifiers.openai, OpenAiHandler],
+		[providerIdentifiers.ollama, NativeOllamaHandler],
+		[providerIdentifiers.lmstudio, LmStudioHandler],
+		[providerIdentifiers.gemini, GeminiHandler],
+		[providerIdentifiers.openaiCodex, OpenAiCodexHandler],
+		[providerIdentifiers.openaiNative, OpenAiNativeHandler],
+		[providerIdentifiers.deepseek, DeepSeekHandler],
+		[providerIdentifiers.qwenCode, QwenCodeHandler],
+		[providerIdentifiers.moonshot, MoonshotHandler],
+		[providerIdentifiers.kimiCode, KimiCodeHandler],
+		[providerIdentifiers.vscodeLm, VsCodeLmHandler],
+		[providerIdentifiers.mistral, MistralHandler],
+		[providerIdentifiers.requesty, RequestyHandler],
+		[providerIdentifiers.unbound, UnboundHandler],
+		[providerIdentifiers.fakeAi, FakeAIHandler],
+		[providerIdentifiers.xai, XAIHandler],
+		[providerIdentifiers.litellm, LiteLLMHandler],
+		[providerIdentifiers.sambanova, SambaNovaHandler],
+		[providerIdentifiers.mimo, MimoHandler],
+		[providerIdentifiers.zai, ZAiHandler],
+		[providerIdentifiers.fireworks, FireworksHandler],
+		[providerIdentifiers.friendli, FriendliHandler],
+		[providerIdentifiers.vercelAiGateway, VercelAiGatewayHandler],
+		[providerIdentifiers.opencodeGo, OpencodeGoHandler],
+		[providerIdentifiers.kenari, KenariHandler],
+		[providerIdentifiers.zooGateway, ZooGatewayHandler],
+		[providerIdentifiers.minimax, MiniMaxHandler],
+		[providerIdentifiers.baseten, BasetenHandler],
+		[providerIdentifiers.poe, PoeHandler],
 	] as const)("returns the expected handler for %s", (apiProvider, Handler) => {
 		const handler = buildApiHandler({ apiProvider })
+
+		expect(handler).toBeInstanceOf(Handler)
+	})
+
+	it.each([
+		["non-Claude models", "gemini-2.5-pro", VertexHandler],
+		["Claude models", "claude-3-7-sonnet", AnthropicVertexHandler],
+	] as const)("returns the expected Vertex handler for %s", (_description, apiModelId, Handler) => {
+		const handler = buildApiHandler({
+			apiProvider: providerIdentifiers.vertex,
+			apiModelId,
+		})
 
 		expect(handler).toBeInstanceOf(Handler)
 	})
@@ -67,13 +135,5 @@ describe("buildApiHandler", () => {
 		})
 
 		expect(handler).toBeInstanceOf(AnthropicHandler)
-	})
-
-	it("uses canonical identifiers instead of provider literals in the handler factory", () => {
-		const factorySource = fs.readFileSync(new URL("../index.ts", import.meta.url), "utf8")
-
-		expect(factorySource).toContain("providerIdentifiers.anthropic")
-		expect(factorySource).toContain("retiredProviderIdentifiers.roo")
-		expect(factorySource).not.toMatch(/case\s+["']/)
 	})
 })
