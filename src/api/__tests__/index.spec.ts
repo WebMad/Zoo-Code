@@ -117,8 +117,9 @@ describe("buildApiHandler", () => {
 	})
 
 	it.each([
-		["non-Claude models", "gemini-2.5-pro", VertexHandler],
-		["Claude models", "claude-3-7-sonnet", AnthropicVertexHandler],
+		["an unspecified model", undefined, VertexHandler],
+		["non-Claude models", "non-claude-test-model", VertexHandler],
+		["Claude models", "claude-test-model", AnthropicVertexHandler],
 	] as const)("returns the expected Vertex handler for %s", (_description, apiModelId, Handler) => {
 		const handler = buildApiHandler({
 			apiProvider: providerIdentifiers.vertex,
