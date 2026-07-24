@@ -17,9 +17,11 @@ import {
 	anthropicDefaultModelId,
 	getProviderDefaultModelId,
 	internationalZAiDefaultModelId,
+	kimiCodeDefaultModelId,
 	mainlandZAiDefaultModelId,
 	openRouterDefaultModelId,
 	vscodeLlmDefaultModelId,
+	zooGatewayDefaultModelId,
 } from "../providers/index.js"
 
 describe("getProviderDefaultModelId", () => {
@@ -29,6 +31,13 @@ describe("getProviderDefaultModelId", () => {
 
 	it("triangulates static selection with another provider category", () => {
 		expect(getProviderDefaultModelId(providerIdentifiers.vscodeLm)).toBe(vscodeLlmDefaultModelId)
+	})
+
+	it.each([
+		[providerIdentifiers.kimiCode, kimiCodeDefaultModelId],
+		[providerIdentifiers.zooGateway, zooGatewayDefaultModelId],
+	])("preserves the %s default added on main", (provider, expectedModelId) => {
+		expect(getProviderDefaultModelId(provider)).toBe(expectedModelId)
 	})
 
 	it("preserves region-dependent defaults", () => {
