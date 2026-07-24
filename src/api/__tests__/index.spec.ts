@@ -21,7 +21,12 @@ vitest.mock("../providers/native-ollama", () => ({
 	NativeOllamaHandler: class {},
 }))
 
-import { providerIdentifiers, retiredProviderIdentifiers, type ProviderNameWithRetired } from "@roo-code/types"
+import {
+	providerIdentifiers,
+	retiredProviderIdentifiers,
+	type ProviderName,
+	type ProviderNameWithRetired,
+} from "@roo-code/types"
 
 import { buildApiHandler } from "../index"
 import {
@@ -61,41 +66,51 @@ import {
 } from "../providers"
 import { NativeOllamaHandler } from "../providers/native-ollama"
 
+type HandlerConstructor = new (...args: never[]) => object
+
+const expectedHandlers = {
+	[providerIdentifiers.anthropic]: AnthropicHandler,
+	[providerIdentifiers.openrouter]: OpenRouterHandler,
+	[providerIdentifiers.bedrock]: AwsBedrockHandler,
+	[providerIdentifiers.openai]: OpenAiHandler,
+	[providerIdentifiers.ollama]: NativeOllamaHandler,
+	[providerIdentifiers.lmstudio]: LmStudioHandler,
+	[providerIdentifiers.gemini]: GeminiHandler,
+	// Gemini CLI currently relies on the factory's default Anthropic handler.
+	[providerIdentifiers.geminiCli]: AnthropicHandler,
+	[providerIdentifiers.openaiCodex]: OpenAiCodexHandler,
+	[providerIdentifiers.openaiNative]: OpenAiNativeHandler,
+	[providerIdentifiers.deepseek]: DeepSeekHandler,
+	[providerIdentifiers.qwenCode]: QwenCodeHandler,
+	[providerIdentifiers.moonshot]: MoonshotHandler,
+	[providerIdentifiers.kimiCode]: KimiCodeHandler,
+	[providerIdentifiers.vscodeLm]: VsCodeLmHandler,
+	[providerIdentifiers.mistral]: MistralHandler,
+	[providerIdentifiers.requesty]: RequestyHandler,
+	[providerIdentifiers.unbound]: UnboundHandler,
+	[providerIdentifiers.fakeAi]: FakeAIHandler,
+	[providerIdentifiers.xai]: XAIHandler,
+	[providerIdentifiers.litellm]: LiteLLMHandler,
+	[providerIdentifiers.sambanova]: SambaNovaHandler,
+	[providerIdentifiers.mimo]: MimoHandler,
+	[providerIdentifiers.zai]: ZAiHandler,
+	[providerIdentifiers.fireworks]: FireworksHandler,
+	[providerIdentifiers.friendli]: FriendliHandler,
+	[providerIdentifiers.vercelAiGateway]: VercelAiGatewayHandler,
+	[providerIdentifiers.opencodeGo]: OpencodeGoHandler,
+	[providerIdentifiers.kenari]: KenariHandler,
+	[providerIdentifiers.zooGateway]: ZooGatewayHandler,
+	[providerIdentifiers.minimax]: MiniMaxHandler,
+	[providerIdentifiers.baseten]: BasetenHandler,
+	[providerIdentifiers.poe]: PoeHandler,
+} satisfies Record<Exclude<ProviderName, typeof providerIdentifiers.vertex>, HandlerConstructor>
+
+const expectedHandlerEntries = Object.entries(expectedHandlers) as Array<
+	[Exclude<ProviderName, typeof providerIdentifiers.vertex>, HandlerConstructor]
+>
+
 describe("buildApiHandler", () => {
-	it.each([
-		[providerIdentifiers.anthropic, AnthropicHandler],
-		[providerIdentifiers.openrouter, OpenRouterHandler],
-		[providerIdentifiers.bedrock, AwsBedrockHandler],
-		[providerIdentifiers.openai, OpenAiHandler],
-		[providerIdentifiers.ollama, NativeOllamaHandler],
-		[providerIdentifiers.lmstudio, LmStudioHandler],
-		[providerIdentifiers.gemini, GeminiHandler],
-		[providerIdentifiers.openaiCodex, OpenAiCodexHandler],
-		[providerIdentifiers.openaiNative, OpenAiNativeHandler],
-		[providerIdentifiers.deepseek, DeepSeekHandler],
-		[providerIdentifiers.qwenCode, QwenCodeHandler],
-		[providerIdentifiers.moonshot, MoonshotHandler],
-		[providerIdentifiers.kimiCode, KimiCodeHandler],
-		[providerIdentifiers.vscodeLm, VsCodeLmHandler],
-		[providerIdentifiers.mistral, MistralHandler],
-		[providerIdentifiers.requesty, RequestyHandler],
-		[providerIdentifiers.unbound, UnboundHandler],
-		[providerIdentifiers.fakeAi, FakeAIHandler],
-		[providerIdentifiers.xai, XAIHandler],
-		[providerIdentifiers.litellm, LiteLLMHandler],
-		[providerIdentifiers.sambanova, SambaNovaHandler],
-		[providerIdentifiers.mimo, MimoHandler],
-		[providerIdentifiers.zai, ZAiHandler],
-		[providerIdentifiers.fireworks, FireworksHandler],
-		[providerIdentifiers.friendli, FriendliHandler],
-		[providerIdentifiers.vercelAiGateway, VercelAiGatewayHandler],
-		[providerIdentifiers.opencodeGo, OpencodeGoHandler],
-		[providerIdentifiers.kenari, KenariHandler],
-		[providerIdentifiers.zooGateway, ZooGatewayHandler],
-		[providerIdentifiers.minimax, MiniMaxHandler],
-		[providerIdentifiers.baseten, BasetenHandler],
-		[providerIdentifiers.poe, PoeHandler],
-	] as const)("returns the expected handler for %s", (apiProvider, Handler) => {
+	it.each(expectedHandlerEntries)("returns the expected handler for %s", (apiProvider, Handler) => {
 		const handler = buildApiHandler({ apiProvider })
 
 		expect(handler).toBeInstanceOf(Handler)
