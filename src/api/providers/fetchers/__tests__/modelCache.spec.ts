@@ -59,6 +59,7 @@ vi.mock("../../../core/config/ContextProxy", () => ({
 
 // Then imports
 import type { Mock } from "vitest"
+import { providerIdentifiers } from "@roo-code/types"
 import * as fsSync from "fs"
 import NodeCache from "node-cache"
 import { getModels, getModelsFromCache } from "../modelCache"
@@ -119,6 +120,31 @@ describe("getModels with new GetModelsOptions", () => {
 		expect(result).toEqual(mockModels)
 	})
 
+	it("dispatches OpenRouter through its canonical provider identifier", async () => {
+		const identifiers = providerIdentifiers as Record<string, string>
+		const originalIdentifier = identifiers.openrouter
+		const canonicalIdentifier = "canonical-openrouter"
+		const mockModels = {
+			"openrouter/canonical-model": {
+				maxTokens: 8192,
+				contextWindow: 128000,
+				supportsPromptCache: false,
+			},
+		}
+
+		try {
+			identifiers.openrouter = canonicalIdentifier
+			mockGetOpenRouterModels.mockResolvedValue(mockModels)
+
+			const result = await getModels({ provider: canonicalIdentifier as any })
+
+			expect(mockGetOpenRouterModels).toHaveBeenCalled()
+			expect(result).toEqual(mockModels)
+		} finally {
+			identifiers.openrouter = originalIdentifier
+		}
+	})
+
 	it("calls getRequestyModels with optional API key", async () => {
 		const mockModels = {
 			"requesty/model": {
@@ -134,6 +160,35 @@ describe("getModels with new GetModelsOptions", () => {
 
 		expect(mockGetRequestyModels).toHaveBeenCalledWith(undefined, DUMMY_REQUESTY_KEY)
 		expect(result).toEqual(mockModels)
+	})
+
+	it("dispatches credentialed fetchers through canonical provider identifiers", async () => {
+		const identifiers = providerIdentifiers as Record<string, string>
+		const originalIdentifier = identifiers.requesty
+		const canonicalIdentifier = "canonical-requesty"
+		const mockModels = {
+			"requesty/canonical-model": {
+				maxTokens: 4096,
+				contextWindow: 8192,
+				supportsPromptCache: false,
+			},
+		}
+
+		try {
+			identifiers.requesty = canonicalIdentifier
+			mockGetRequestyModels.mockResolvedValue(mockModels)
+
+			const result = await getModels({
+				provider: canonicalIdentifier as any,
+				apiKey: DUMMY_REQUESTY_KEY,
+				baseUrl: "https://router.requesty.ai/v1",
+			})
+
+			expect(mockGetRequestyModels).toHaveBeenCalledWith("https://router.requesty.ai/v1", DUMMY_REQUESTY_KEY)
+			expect(result).toEqual(mockModels)
+		} finally {
+			identifiers.requesty = originalIdentifier
+		}
 	})
 
 	it("calls getKenariModels with optional API key", async () => {
@@ -239,6 +294,31 @@ describe("getModelsFromCache disk fallback", () => {
 		expect(result).toEqual(memoryModels)
 		// Disk should not be checked when memory cache hits
 		expect(fsSync.existsSync).not.toHaveBeenCalled()
+	})
+
+	it("isolates authenticated users through the canonical Zoo Gateway identifier", () => {
+		const identifiers = providerIdentifiers as Record<string, string>
+		const originalIdentifier = identifiers.zooGateway
+		const canonicalIdentifier = "canonical-zoo-gateway"
+		const previousUserModels = {
+			"previous-user/model": {
+				maxTokens: 4096,
+				contextWindow: 128000,
+				supportsPromptCache: false,
+			},
+		}
+
+		try {
+			identifiers.zooGateway = canonicalIdentifier
+			mockCache.get.mockReturnValue(previousUserModels)
+
+			const result = getModelsFromCache(canonicalIdentifier as any)
+
+			expect(result).toBeUndefined()
+			expect(mockCache.get).not.toHaveBeenCalled()
+		} finally {
+			identifiers.zooGateway = originalIdentifier
+		}
 	})
 
 	it("returns disk cache data when memory cache misses and context is available", () => {
