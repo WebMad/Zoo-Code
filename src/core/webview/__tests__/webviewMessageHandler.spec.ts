@@ -1495,55 +1495,12 @@ describe("zooCodeSignOut", () => {
 		vi.clearAllMocks()
 	})
 
-	it("disconnects Zoo Code and clears tokens from all zoo-gateway profiles", async () => {
+	it("disconnects Zoo Code and clears tokens from all profiles using the canonical Zoo Gateway identifier", async () => {
 		const { disconnectZooCode } = await import("../../../services/zoo-code-auth")
-		const upsertProviderProfile = vi.fn().mockResolvedValue(undefined)
-		const saveConfig = vi.fn().mockResolvedValue(undefined)
-
-		;(mockClineProvider as any).contextProxy = {
-			...mockClineProvider.contextProxy,
-			getProviderSettings: vi.fn().mockReturnValue({ apiProvider: "zoo-gateway" }),
-			getValues: vi.fn().mockReturnValue({ currentApiConfigName: "Zoo Gateway" }),
-		}
-		;(mockClineProvider as any).providerSettingsManager = {
-			listConfig: vi.fn().mockResolvedValue([
-				{ name: "Zoo Gateway", apiProvider: "zoo-gateway" },
-				{ name: "Backup Zoo", apiProvider: "zoo-gateway" },
-			]),
-			getProfile: vi
-				.fn()
-				.mockResolvedValueOnce({
-					apiProvider: "zoo-gateway",
-					zooSessionToken: "token-active",
-					zooGatewayModelId: "anthropic/claude-sonnet-4",
-				})
-				.mockResolvedValueOnce({
-					apiProvider: "zoo-gateway",
-					zooSessionToken: "token-backup",
-				}),
-			saveConfig,
-		}
-		;(mockClineProvider as any).upsertProviderProfile = upsertProviderProfile
-
-		await webviewMessageHandler(mockClineProvider, { type: "zooCodeSignOut" })
-
-		expect(disconnectZooCode).toHaveBeenCalled()
-		expect(upsertProviderProfile).toHaveBeenCalledWith(
-			"Zoo Gateway",
-			expect.not.objectContaining({ zooSessionToken: expect.anything() }),
-			true,
-		)
-		expect(saveConfig).toHaveBeenCalledWith(
-			"Backup Zoo",
-			expect.not.objectContaining({ zooSessionToken: expect.anything() }),
-		)
-		expect(mockClineProvider.postStateToWebview).toHaveBeenCalled()
-	})
-
-	it("clears tokens using the canonical Zoo Gateway provider identifier", async () => {
 		const identifiers = providerIdentifiers as Record<string, string>
 		const originalIdentifier = identifiers.zooGateway
 		const upsertProviderProfile = vi.fn().mockResolvedValue(undefined)
+		const saveConfig = vi.fn().mockResolvedValue(undefined)
 
 		try {
 			identifiers.zooGateway = "canonical-zoo-gateway"
@@ -1553,22 +1510,38 @@ describe("zooCodeSignOut", () => {
 				getValues: vi.fn().mockReturnValue({ currentApiConfigName: "Zoo Gateway" }),
 			}
 			;(mockClineProvider as any).providerSettingsManager = {
-				listConfig: vi.fn().mockResolvedValue([{ name: "Zoo Gateway", apiProvider: identifiers.zooGateway }]),
-				getProfile: vi.fn().mockResolvedValue({
-					apiProvider: identifiers.zooGateway,
-					zooSessionToken: "token-active",
-				}),
-				saveConfig: vi.fn(),
+				listConfig: vi.fn().mockResolvedValue([
+					{ name: "Zoo Gateway", apiProvider: identifiers.zooGateway },
+					{ name: "Backup Zoo", apiProvider: identifiers.zooGateway },
+				]),
+				getProfile: vi
+					.fn()
+					.mockResolvedValueOnce({
+						apiProvider: identifiers.zooGateway,
+						zooSessionToken: "token-active",
+						zooGatewayModelId: "anthropic/claude-sonnet-4",
+					})
+					.mockResolvedValueOnce({
+						apiProvider: identifiers.zooGateway,
+						zooSessionToken: "token-backup",
+					}),
+				saveConfig,
 			}
 			;(mockClineProvider as any).upsertProviderProfile = upsertProviderProfile
 
 			await webviewMessageHandler(mockClineProvider, { type: "zooCodeSignOut" })
 
+			expect(disconnectZooCode).toHaveBeenCalled()
 			expect(upsertProviderProfile).toHaveBeenCalledWith(
 				"Zoo Gateway",
 				expect.not.objectContaining({ zooSessionToken: expect.anything() }),
 				true,
 			)
+			expect(saveConfig).toHaveBeenCalledWith(
+				"Backup Zoo",
+				expect.not.objectContaining({ zooSessionToken: expect.anything() }),
+			)
+			expect(mockClineProvider.postStateToWebview).toHaveBeenCalled()
 		} finally {
 			identifiers.zooGateway = originalIdentifier
 		}

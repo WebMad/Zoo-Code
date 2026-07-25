@@ -1902,7 +1902,7 @@ describe("Cline", () => {
 					expect(metadata!.abortSignal).toBe(task.currentRequestAbortController!.signal)
 				})
 
-				it("enables allowed function names through the canonical Gemini provider identifier", async () => {
+				it("uses the canonical Gemini identifier when configuring tool restrictions", async () => {
 					const identifiers = providerIdentifiers as Record<string, string>
 					const originalIdentifier = identifiers.gemini
 
@@ -1942,7 +1942,12 @@ describe("Cline", () => {
 						await task.attemptApiRequest(0).next()
 
 						const [, , metadata] = createMessageSpy.mock.calls[0]!
-						expect(metadata?.allowedFunctionNames).toEqual(expect.any(Array))
+						expect(metadata).toEqual(
+							expect.objectContaining({
+								tools: expect.any(Array),
+								allowedFunctionNames: expect.any(Array),
+							}),
+						)
 					} finally {
 						identifiers.gemini = originalIdentifier
 					}
