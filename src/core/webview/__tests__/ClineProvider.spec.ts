@@ -528,25 +528,16 @@ describe("ClineProvider", () => {
 		expect(ClineProvider.getVisibleInstance()).toBe(provider)
 	})
 
-	test("prepares LM Studio tasks through the canonical provider identifier", async () => {
-		const identifiers = providerIdentifiers as Record<string, string>
-		const originalIdentifier = identifiers.lmstudio
+	test("loads full model details when preparing an LM Studio task", async () => {
+		await provider.performPreparationTasks({
+			apiConfiguration: {
+				apiProvider: "lmstudio",
+				lmStudioBaseUrl: "http://localhost:1234",
+				lmStudioModelId: "test-model",
+			},
+		} as Task)
 
-		try {
-			identifiers.lmstudio = "canonical-lmstudio"
-
-			await provider.performPreparationTasks({
-				apiConfiguration: {
-					apiProvider: identifiers.lmstudio,
-					lmStudioBaseUrl: "http://localhost:1234",
-					lmStudioModelId: "test-model",
-				},
-			} as Task)
-
-			expect(forceFullModelDetailsLoad).toHaveBeenCalledWith("http://localhost:1234", "test-model")
-		} finally {
-			identifiers.lmstudio = originalIdentifier
-		}
+		expect(forceFullModelDetailsLoad).toHaveBeenCalledWith("http://localhost:1234", "test-model")
 	})
 
 	test("resolveWebviewView hydrates the saved terminalProfile into the process-wide Terminal state", async () => {

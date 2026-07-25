@@ -6,7 +6,7 @@ import * as path from "path"
 import * as vscode from "vscode"
 import { Anthropic } from "@anthropic-ai/sdk"
 
-import { providerIdentifiers, type GlobalState, type ProviderSettings, type ModelInfo } from "@roo-code/types"
+import type { GlobalState, ProviderSettings, ModelInfo } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
 
 import { Task } from "../Task"
@@ -1902,55 +1902,47 @@ describe("Cline", () => {
 					expect(metadata!.abortSignal).toBe(task.currentRequestAbortController!.signal)
 				})
 
-				it("uses the canonical Gemini identifier when configuring tool restrictions", async () => {
-					const identifiers = providerIdentifiers as Record<string, string>
-					const originalIdentifier = identifiers.gemini
+				it("configures tool restrictions for Gemini requests", async () => {
+					const apiConfiguration = {
+						...mockApiConfig,
+						apiProvider: "gemini",
+					} as ProviderSettings
+					const task = new Task({
+						provider: mockProvider,
+						apiConfiguration,
+						task: "test task",
+						startTask: false,
+					})
 
-					try {
-						identifiers.gemini = "canonical-gemini"
-						const apiConfiguration = {
-							...mockApiConfig,
-							apiProvider: identifiers.gemini,
-						} as ProviderSettings
-						const task = new Task({
-							provider: mockProvider,
-							apiConfiguration,
-							task: "test task",
-							startTask: false,
-						})
+					vi.spyOn(task as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
+					vi.spyOn(task.api, "getModel").mockReturnValue({
+						id: mockApiConfig.apiModelId!,
+						info: { contextWindow: 200000, maxTokens: 4096 } as ModelInfo,
+					})
+					const providerState = await mockProvider.getState()
+					vi.spyOn(mockProvider, "getState").mockResolvedValue({
+						...providerState,
+						apiConfiguration,
+						autoApprovalEnabled: true,
+						requestDelaySeconds: 0,
+					})
+					const mockStream = (async function* () {
+						yield { type: "text", text: "response" } as ApiStreamChunk
+					})()
+					const createMessageSpy = vi.spyOn(task.api, "createMessage").mockReturnValue(mockStream)
+					task.apiConversationHistory = [
+						{ role: "user", content: [{ type: "text", text: "test message" }], ts: Date.now() },
+					] as any
 
-						vi.spyOn(task as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
-						vi.spyOn(task.api, "getModel").mockReturnValue({
-							id: mockApiConfig.apiModelId!,
-							info: { contextWindow: 200000, maxTokens: 4096 } as ModelInfo,
-						})
-						const providerState = await mockProvider.getState()
-						vi.spyOn(mockProvider, "getState").mockResolvedValue({
-							...providerState,
-							apiConfiguration,
-							autoApprovalEnabled: true,
-							requestDelaySeconds: 0,
-						})
-						const mockStream = (async function* () {
-							yield { type: "text", text: "response" } as ApiStreamChunk
-						})()
-						const createMessageSpy = vi.spyOn(task.api, "createMessage").mockReturnValue(mockStream)
-						task.apiConversationHistory = [
-							{ role: "user", content: [{ type: "text", text: "test message" }], ts: Date.now() },
-						] as any
+					await task.attemptApiRequest(0).next()
 
-						await task.attemptApiRequest(0).next()
-
-						const [, , metadata] = createMessageSpy.mock.calls[0]!
-						expect(metadata).toEqual(
-							expect.objectContaining({
-								tools: expect.any(Array),
-								allowedFunctionNames: expect.any(Array),
-							}),
-						)
-					} finally {
-						identifiers.gemini = originalIdentifier
-					}
+					const [, , metadata] = createMessageSpy.mock.calls[0]!
+					expect(metadata).toEqual(
+						expect.objectContaining({
+							tools: expect.any(Array),
+							allowedFunctionNames: expect.any(Array),
+						}),
+					)
 				})
 
 				it("should invoke abort on currentRequestAbortController during first-chunk wait", async () => {
