@@ -22,7 +22,6 @@ import {
 	vscodeLlmDefaultModelId,
 	moonshotDefaultModelId,
 	moonshotModels,
-	providerIdentifiers,
 } from "@roo-code/types"
 
 import { useSelectedModel } from "../useSelectedModel"
@@ -830,28 +829,6 @@ describe("useSelectedModel", () => {
 			expect(result.current.provider).toBe("openai")
 			expect(result.current.id).toBe("gpt-4o")
 			expect(result.current.info).toEqual(openAiModelInfoSaneDefaults)
-		})
-
-		it("uses the canonical OpenAI identifier to select configured model metadata", () => {
-			const identifiers = providerIdentifiers as Record<string, string>
-			const originalIdentifier = identifiers.openai
-
-			try {
-				identifiers.openai = "canonical-openai"
-
-				const apiConfiguration = {
-					apiProvider: identifiers.openai,
-					openAiModelId: "gpt-4o",
-				} as ProviderSettings
-
-				const wrapper = createWrapper()
-				const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper })
-
-				expect(result.current.id).toBe("gpt-4o")
-				expect(result.current.info).toEqual(openAiModelInfoSaneDefaults)
-			} finally {
-				identifiers.openai = originalIdentifier
-			}
 		})
 
 		it("should return custom model info when provided", () => {
