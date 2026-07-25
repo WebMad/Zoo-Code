@@ -1,4 +1,9 @@
-import type { ProviderSettings, OrganizationAllowList, RouterModels } from "@roo-code/types"
+import {
+	providerIdentifiers,
+	type ProviderSettings,
+	type OrganizationAllowList,
+	type RouterModels,
+} from "@roo-code/types"
 
 // Mock i18next to return translation keys with interpolated values
 vi.mock("i18next", () => ({
@@ -136,6 +141,24 @@ describe("Model Validation Functions", () => {
 	})
 
 	describe("validateApiConfigurationExcludingModelErrors", () => {
+		it("uses the canonical OpenRouter identifier for credential validation", () => {
+			const identifiers = providerIdentifiers as Record<string, string>
+			const originalIdentifier = identifiers.openrouter
+
+			try {
+				identifiers.openrouter = "canonical-openrouter"
+
+				const config = {
+					apiProvider: identifiers.openrouter,
+					openRouterModelId: "valid-model",
+				} as ProviderSettings
+
+				expect(validateApiConfigurationExcludingModelErrors(config)).toBe("settings:validation.apiKey")
+			} finally {
+				identifiers.openrouter = originalIdentifier
+			}
+		})
+
 		it("returns undefined when configuration is valid", () => {
 			const config: ProviderSettings = {
 				apiProvider: "openrouter",
