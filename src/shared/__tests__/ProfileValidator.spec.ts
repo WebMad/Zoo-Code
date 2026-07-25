@@ -1,11 +1,97 @@
 // npx vitest run src/shared/__tests__/ProfileValidator.spec.ts
 
-import type { ProviderSettings, OrganizationAllowList } from "@roo-code/types"
+import { providerIdentifiers, type ProviderSettings, type OrganizationAllowList } from "@roo-code/types"
 
 import { ProfileValidator } from "../ProfileValidator"
 
 describe("ProfileValidator", () => {
 	describe("isProfileAllowed", () => {
+		it.each([
+			["openai", { openAiModelId: "model" }],
+			["anthropic", { apiModelId: "model" }],
+			["openaiNative", { apiModelId: "model" }],
+			["bedrock", { apiModelId: "model" }],
+			["vertex", { apiModelId: "model" }],
+			["gemini", { apiModelId: "model" }],
+			["mistral", { apiModelId: "model" }],
+			["deepseek", { apiModelId: "model" }],
+			["xai", { apiModelId: "model" }],
+			["sambanova", { apiModelId: "model" }],
+			["fireworks", { apiModelId: "model" }],
+			["friendli", { apiModelId: "model" }],
+			["litellm", { litellmModelId: "model" }],
+			["lmstudio", { lmStudioModelId: "model" }],
+			["vscodeLm", { vsCodeLmModelSelector: { id: "model" } }],
+			["openrouter", { openRouterModelId: "model" }],
+			["ollama", { ollamaModelId: "model" }],
+			["requesty", { requestyModelId: "model" }],
+			["unbound", { unboundModelId: "model" }],
+		])("resolves %s model fields through canonical identifiers", (identifierKey, profileSettings) => {
+			const identifiers = providerIdentifiers as Record<string, string>
+			const originalIdentifier = identifiers[identifierKey]
+			const canonicalIdentifier = `canonical-${identifierKey}`
+			const modelId = "model"
+
+			try {
+				identifiers[identifierKey] = canonicalIdentifier
+
+				const profile = {
+					apiProvider: canonicalIdentifier,
+					...profileSettings,
+				} as ProviderSettings
+				const allowList: OrganizationAllowList = {
+					allowAll: false,
+					providers: {
+						[canonicalIdentifier]: { allowAll: false, models: [modelId] },
+					},
+				}
+
+				expect(ProfileValidator.isProfileAllowed(profile, allowList)).toBe(true)
+			} finally {
+				identifiers[identifierKey] = originalIdentifier
+			}
+		})
+
+		it.each([
+			{ identifierKey: "fakeAi", profileSettings: {}, modelId: undefined, expected: false },
+			{
+				identifierKey: "fakeAi",
+				profileSettings: {},
+				modelId: undefined,
+				expected: true,
+				providerAllowAll: true,
+			},
+		])(
+			"preserves canonical fallback behavior when provider allowAll is $providerAllowAll",
+			({ identifierKey, profileSettings, modelId, expected, providerAllowAll = false }) => {
+				const identifiers = providerIdentifiers as Record<string, string>
+				const originalIdentifier = identifiers[identifierKey]
+				const canonicalIdentifier = `canonical-${identifierKey}`
+
+				try {
+					identifiers[identifierKey] = canonicalIdentifier
+
+					const profile = {
+						apiProvider: canonicalIdentifier,
+						...profileSettings,
+					} as unknown as ProviderSettings
+					const allowList: OrganizationAllowList = {
+						allowAll: false,
+						providers: {
+							[canonicalIdentifier]: {
+								allowAll: providerAllowAll,
+								models: modelId ? [modelId] : undefined,
+							},
+						},
+					}
+
+					expect(ProfileValidator.isProfileAllowed(profile, allowList)).toBe(expected)
+				} finally {
+					identifiers[identifierKey] = originalIdentifier
+				}
+			},
+		)
+
 		it("should allow any profile when allowAll is true", () => {
 			const allowList: OrganizationAllowList = {
 				allowAll: true,
