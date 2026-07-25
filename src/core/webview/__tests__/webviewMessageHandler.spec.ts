@@ -51,7 +51,7 @@ vi.mock("../rulesMessageHandler", () => ({
 	handleOpenRulesDirectory: vi.fn(),
 }))
 
-import type { ModelRecord } from "@roo-code/types"
+import { providerIdentifiers, type ModelRecord } from "@roo-code/types"
 
 import { webviewMessageHandler } from "../webviewMessageHandler"
 import type { ClineProvider } from "../ClineProvider"
@@ -1538,6 +1538,40 @@ describe("zooCodeSignOut", () => {
 			expect.not.objectContaining({ zooSessionToken: expect.anything() }),
 		)
 		expect(mockClineProvider.postStateToWebview).toHaveBeenCalled()
+	})
+
+	it("clears tokens using the canonical Zoo Gateway provider identifier", async () => {
+		const identifiers = providerIdentifiers as Record<string, string>
+		const originalIdentifier = identifiers.zooGateway
+		const upsertProviderProfile = vi.fn().mockResolvedValue(undefined)
+
+		try {
+			identifiers.zooGateway = "canonical-zoo-gateway"
+			;(mockClineProvider as any).contextProxy = {
+				...mockClineProvider.contextProxy,
+				getProviderSettings: vi.fn().mockReturnValue({ apiProvider: identifiers.zooGateway }),
+				getValues: vi.fn().mockReturnValue({ currentApiConfigName: "Zoo Gateway" }),
+			}
+			;(mockClineProvider as any).providerSettingsManager = {
+				listConfig: vi.fn().mockResolvedValue([{ name: "Zoo Gateway", apiProvider: identifiers.zooGateway }]),
+				getProfile: vi.fn().mockResolvedValue({
+					apiProvider: identifiers.zooGateway,
+					zooSessionToken: "token-active",
+				}),
+				saveConfig: vi.fn(),
+			}
+			;(mockClineProvider as any).upsertProviderProfile = upsertProviderProfile
+
+			await webviewMessageHandler(mockClineProvider, { type: "zooCodeSignOut" })
+
+			expect(upsertProviderProfile).toHaveBeenCalledWith(
+				"Zoo Gateway",
+				expect.not.objectContaining({ zooSessionToken: expect.anything() }),
+				true,
+			)
+		} finally {
+			identifiers.zooGateway = originalIdentifier
+		}
 	})
 
 	it("still clears the in-memory handler when the active profile token is already empty on disk", async () => {

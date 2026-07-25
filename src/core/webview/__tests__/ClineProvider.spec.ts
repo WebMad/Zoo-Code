@@ -16,6 +16,7 @@ import {
 	DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
 	DEFAULT_DIFF_FUZZY_THRESHOLD,
 	DEFAULT_WRITE_DELAY_MS,
+	providerIdentifiers,
 } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
 
@@ -29,6 +30,7 @@ import { safeWriteJson } from "../../../utils/safeWriteJson"
 import { ClineProvider } from "../ClineProvider"
 import { Terminal } from "../../../integrations/terminal/Terminal"
 import { MessageManager } from "../../message-manager"
+import { forceFullModelDetailsLoad } from "../../../api/providers/fetchers/lmstudio"
 
 // Mock setup must come before imports.
 vi.mock("../../prompts/sections/custom-instructions")
@@ -256,6 +258,11 @@ vi.mock("../../../api/providers/fetchers/modelCache", () => ({
 	getModels: vi.fn().mockResolvedValue({}),
 	flushModels: vi.fn(),
 	getModelsFromCache: vi.fn().mockReturnValue(undefined),
+}))
+
+vi.mock("../../../api/providers/fetchers/lmstudio", () => ({
+	hasLoadedFullDetails: vi.fn().mockReturnValue(false),
+	forceFullModelDetailsLoad: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock("../../../services/zoo-code-auth", () => ({
@@ -519,6 +526,27 @@ describe("ClineProvider", () => {
 		// @ts-ignore - accessing private property for testing
 		provider.view = mockWebviewView
 		expect(ClineProvider.getVisibleInstance()).toBe(provider)
+	})
+
+	test("prepares LM Studio tasks through the canonical provider identifier", async () => {
+		const identifiers = providerIdentifiers as Record<string, string>
+		const originalIdentifier = identifiers.lmstudio
+
+		try {
+			identifiers.lmstudio = "canonical-lmstudio"
+
+			await provider.performPreparationTasks({
+				apiConfiguration: {
+					apiProvider: identifiers.lmstudio,
+					lmStudioBaseUrl: "http://localhost:1234",
+					lmStudioModelId: "test-model",
+				},
+			} as Task)
+
+			expect(forceFullModelDetailsLoad).toHaveBeenCalledWith("http://localhost:1234", "test-model")
+		} finally {
+			identifiers.lmstudio = originalIdentifier
+		}
 	})
 
 	test("resolveWebviewView hydrates the saved terminalProfile into the process-wide Terminal state", async () => {

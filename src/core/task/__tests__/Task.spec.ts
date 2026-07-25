@@ -6,7 +6,7 @@ import * as path from "path"
 import * as vscode from "vscode"
 import { Anthropic } from "@anthropic-ai/sdk"
 
-import type { GlobalState, ProviderSettings, ModelInfo } from "@roo-code/types"
+import { providerIdentifiers, type GlobalState, type ProviderSettings, type ModelInfo } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
 
 import { Task } from "../Task"
@@ -1900,6 +1900,52 @@ describe("Cline", () => {
 
 					expect(metadata).toBeDefined()
 					expect(metadata!.abortSignal).toBe(task.currentRequestAbortController!.signal)
+				})
+
+				it("enables allowed function names through the canonical Gemini provider identifier", async () => {
+					const identifiers = providerIdentifiers as Record<string, string>
+					const originalIdentifier = identifiers.gemini
+
+					try {
+						identifiers.gemini = "canonical-gemini"
+						const apiConfiguration = {
+							...mockApiConfig,
+							apiProvider: identifiers.gemini,
+						} as ProviderSettings
+						const task = new Task({
+							provider: mockProvider,
+							apiConfiguration,
+							task: "test task",
+							startTask: false,
+						})
+
+						vi.spyOn(task as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
+						vi.spyOn(task.api, "getModel").mockReturnValue({
+							id: mockApiConfig.apiModelId!,
+							info: { contextWindow: 200000, maxTokens: 4096 } as ModelInfo,
+						})
+						const providerState = await mockProvider.getState()
+						vi.spyOn(mockProvider, "getState").mockResolvedValue({
+							...providerState,
+							apiConfiguration,
+							autoApprovalEnabled: true,
+							requestDelaySeconds: 0,
+						})
+						const mockStream = (async function* () {
+							yield { type: "text", text: "response" } as ApiStreamChunk
+						})()
+						const createMessageSpy = vi.spyOn(task.api, "createMessage").mockReturnValue(mockStream)
+						task.apiConversationHistory = [
+							{ role: "user", content: [{ type: "text", text: "test message" }], ts: Date.now() },
+						] as any
+
+						await task.attemptApiRequest(0).next()
+
+						const [, , metadata] = createMessageSpy.mock.calls[0]!
+						expect(metadata?.allowedFunctionNames).toEqual(expect.any(Array))
+					} finally {
+						identifiers.gemini = originalIdentifier
+					}
 				})
 
 				it("should invoke abort on currentRequestAbortController during first-chunk wait", async () => {
