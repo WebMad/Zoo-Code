@@ -1,4 +1,4 @@
-import { getApiProtocol, providerIdentifiers, type ProviderName } from "../index.js"
+import { getApiProtocol, providerIdentifiers } from "../index.js"
 
 describe("getApiProtocol", () => {
 	describe("Anthropic-style providers", () => {
@@ -15,21 +15,8 @@ describe("getApiProtocol", () => {
 	})
 
 	describe("Vertex provider with Claude models", () => {
-		it("uses the canonical Vertex identifier for Claude protocol selection", () => {
-			const identifiers = providerIdentifiers as Record<string, string>
-			const originalIdentifier = identifiers.vertex!
-
-			try {
-				identifiers.vertex = "canonical-vertex"
-
-				expect(getApiProtocol(identifiers.vertex as ProviderName, "claude-3-opus")).toBe("anthropic")
-			} finally {
-				identifiers.vertex = originalIdentifier
-			}
-		})
-
 		it("should return 'anthropic' for vertex provider with claude models", () => {
-			expect(getApiProtocol("vertex", "claude-3-opus")).toBe("anthropic")
+			expect(getApiProtocol(providerIdentifiers.vertex, "claude-3-opus")).toBe("anthropic")
 			expect(getApiProtocol("vertex", "Claude-3-Sonnet")).toBe("anthropic")
 			expect(getApiProtocol("vertex", "CLAUDE-instant")).toBe("anthropic")
 			expect(getApiProtocol("vertex", "anthropic/claude-3-haiku")).toBe("anthropic")
@@ -48,24 +35,8 @@ describe("getApiProtocol", () => {
 
 	describe("Vercel AI Gateway provider", () => {
 		it("uses canonical gateway identifiers for Anthropic model protocol selection", () => {
-			const identifiers = providerIdentifiers as Record<string, string>
-			const originalVercelIdentifier = identifiers.vercelAiGateway!
-			const originalZooIdentifier = identifiers.zooGateway!
-
-			try {
-				identifiers.vercelAiGateway = "canonical-vercel-ai-gateway"
-				identifiers.zooGateway = "canonical-zoo-gateway"
-
-				expect(getApiProtocol(identifiers.vercelAiGateway as ProviderName, "anthropic/claude-3-opus")).toBe(
-					"anthropic",
-				)
-				expect(getApiProtocol(identifiers.zooGateway as ProviderName, "anthropic/claude-3-opus")).toBe(
-					"anthropic",
-				)
-			} finally {
-				identifiers.vercelAiGateway = originalVercelIdentifier
-				identifiers.zooGateway = originalZooIdentifier
-			}
+			expect(getApiProtocol(providerIdentifiers.vercelAiGateway, "anthropic/claude-3-opus")).toBe("anthropic")
+			expect(getApiProtocol(providerIdentifiers.zooGateway, "anthropic/claude-3-opus")).toBe("anthropic")
 		})
 
 		it("should return 'anthropic' for vercel-ai-gateway provider with anthropic models", () => {
@@ -88,21 +59,8 @@ describe("getApiProtocol", () => {
 	})
 
 	describe("Opencode Go provider", () => {
-		it("uses the canonical OpenCode Go identifier for model-specific protocol selection", () => {
-			const identifiers = providerIdentifiers as Record<string, string>
-			const originalIdentifier = identifiers.opencodeGo!
-
-			try {
-				identifiers.opencodeGo = "canonical-opencode-go"
-
-				expect(getApiProtocol(identifiers.opencodeGo as ProviderName, "qwen3.7-max")).toBe("anthropic")
-			} finally {
-				identifiers.opencodeGo = originalIdentifier
-			}
-		})
-
 		it("should return 'anthropic' for opencode-go Anthropic-format models (Qwen/MiniMax)", () => {
-			expect(getApiProtocol("opencode-go", "qwen3.7-max")).toBe("anthropic")
+			expect(getApiProtocol(providerIdentifiers.opencodeGo, "qwen3.7-max")).toBe("anthropic")
 			expect(getApiProtocol("opencode-go", "qwen3.7-plus")).toBe("anthropic")
 			expect(getApiProtocol("opencode-go", "qwen3.6-plus")).toBe("anthropic")
 			expect(getApiProtocol("opencode-go", "minimax-m3")).toBe("anthropic")

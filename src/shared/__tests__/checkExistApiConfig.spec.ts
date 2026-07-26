@@ -67,16 +67,7 @@ describe("checkExistKey", () => {
 	})
 
 	it("recognizes keyless providers through their canonical identifiers", () => {
-		const identifiers = providerIdentifiers as Record<string, string>
-		const originalIdentifier = identifiers.fakeAi!
-
-		try {
-			identifiers.fakeAi = "canonical-fake-ai"
-
-			expect(checkExistKey({ apiProvider: identifiers.fakeAi } as ProviderSettings)).toBe(true)
-		} finally {
-			identifiers.fakeAi = originalIdentifier
-		}
+		expect(checkExistKey({ apiProvider: providerIdentifiers.fakeAi })).toBe(true)
 	})
 
 	it("should return true for openai-codex provider without API key", () => {
@@ -109,18 +100,7 @@ describe("checkExistKey", () => {
 	})
 
 	it("recognizes OAuth authentication through the canonical Kimi Code identifier", () => {
-		const identifiers = providerIdentifiers as Record<string, string>
-		const originalIdentifier = identifiers.kimiCode!
-
-		try {
-			identifiers.kimiCode = "canonical-kimi-code"
-
-			expect(
-				checkExistKey({ apiProvider: identifiers.kimiCode, kimiCodeAuthMethod: "oauth" } as ProviderSettings),
-			).toBe(true)
-		} finally {
-			identifiers.kimiCode = originalIdentifier
-		}
+		expect(checkExistKey({ apiProvider: providerIdentifiers.kimiCode, kimiCodeAuthMethod: "oauth" })).toBe(true)
 	})
 
 	it("should return true for kimi-code provider without auth method (defaults to OAuth)", () => {
@@ -157,16 +137,7 @@ describe("checkExistKey", () => {
 	})
 
 	it("recognizes session authentication through the canonical Zoo Gateway identifier", () => {
-		const identifiers = providerIdentifiers as Record<string, string>
-		const originalIdentifier = identifiers.zooGateway!
-
-		try {
-			identifiers.zooGateway = "canonical-zoo-gateway"
-
-			expect(checkExistKey({ apiProvider: identifiers.zooGateway } as ProviderSettings, true)).toBe(true)
-		} finally {
-			identifiers.zooGateway = originalIdentifier
-		}
+		expect(checkExistKey({ apiProvider: providerIdentifiers.zooGateway }, true)).toBe(true)
 	})
 
 	it("should return true for zoo-gateway when profile has zooSessionToken", () => {

@@ -587,21 +587,33 @@ export const ANTHROPIC_STYLE_PROVIDERS: ProviderName[] = [
 	providerIdentifiers.minimax,
 ]
 
+const CLAUDE_MODEL_ID_FRAGMENT = "claude"
+const ANTHROPIC_MODEL_ID_PREFIX = "anthropic/"
+const ANTHROPIC_MODEL_GATEWAY_PROVIDERS: ProviderName[] = [
+	providerIdentifiers.vercelAiGateway,
+	providerIdentifiers.zooGateway,
+]
+
 export const getApiProtocol = (provider: ProviderName | undefined, modelId?: string): "anthropic" | "openai" => {
 	if (provider && ANTHROPIC_STYLE_PROVIDERS.includes(provider)) {
 		return "anthropic"
 	}
 
-	if (provider && provider === providerIdentifiers.vertex && modelId && modelId.toLowerCase().includes("claude")) {
+	if (
+		provider &&
+		provider === providerIdentifiers.vertex &&
+		modelId &&
+		modelId.toLowerCase().includes(CLAUDE_MODEL_ID_FRAGMENT)
+	) {
 		return "anthropic"
 	}
 
 	// Vercel AI Gateway and Zoo Gateway use the anthropic protocol for anthropic models.
 	if (
 		provider &&
-		(provider === providerIdentifiers.vercelAiGateway || provider === providerIdentifiers.zooGateway) &&
+		ANTHROPIC_MODEL_GATEWAY_PROVIDERS.includes(provider) &&
 		modelId &&
-		modelId.toLowerCase().startsWith("anthropic/")
+		modelId.toLowerCase().startsWith(ANTHROPIC_MODEL_ID_PREFIX)
 	) {
 		return "anthropic"
 	}
