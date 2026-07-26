@@ -27,38 +27,30 @@ describe("ProfileValidator", () => {
 			["requesty", { requestyModelId: "model" }],
 			["unbound", { unboundModelId: "model" }],
 		])("resolves %s model fields through canonical identifiers", (identifierKey, profileSettings) => {
-			const identifiers = providerIdentifiers as Record<string, string>
-			const originalIdentifier = identifiers[identifierKey]
-			const canonicalIdentifier = `canonical-${identifierKey}`
+			const canonicalIdentifier = providerIdentifiers[identifierKey as keyof typeof providerIdentifiers]
 			const modelId = "model"
 
-			try {
-				identifiers[identifierKey] = canonicalIdentifier
-
-				const profile = {
-					apiProvider: canonicalIdentifier,
-					...profileSettings,
-				} as ProviderSettings
-				const allowList: OrganizationAllowList = {
-					allowAll: false,
-					providers: {
-						[canonicalIdentifier]: { allowAll: false, models: [modelId] },
-					},
-				}
-
-				expect(ProfileValidator.isProfileAllowed(profile, allowList)).toBe(true)
-
-				const negativeAllowList: OrganizationAllowList = {
-					allowAll: false,
-					providers: {
-						[canonicalIdentifier]: { allowAll: false, models: ["other-model"] },
-					},
-				}
-
-				expect(ProfileValidator.isProfileAllowed(profile, negativeAllowList)).toBe(false)
-			} finally {
-				identifiers[identifierKey] = originalIdentifier
+			const profile = {
+				apiProvider: canonicalIdentifier,
+				...profileSettings,
+			} as ProviderSettings
+			const allowList: OrganizationAllowList = {
+				allowAll: false,
+				providers: {
+					[canonicalIdentifier]: { allowAll: false, models: [modelId] },
+				},
 			}
+
+			expect(ProfileValidator.isProfileAllowed(profile, allowList)).toBe(true)
+
+			const negativeAllowList: OrganizationAllowList = {
+				allowAll: false,
+				providers: {
+					[canonicalIdentifier]: { allowAll: false, models: ["other-model"] },
+				},
+			}
+
+			expect(ProfileValidator.isProfileAllowed(profile, negativeAllowList)).toBe(false)
 		})
 
 		it.each([
