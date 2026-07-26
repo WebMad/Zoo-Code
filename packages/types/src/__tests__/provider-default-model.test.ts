@@ -41,6 +41,8 @@ describe("getProviderDefaultModelId", () => {
 	})
 
 	it("preserves region-dependent defaults", () => {
+		// These defaults currently share the same model ID, so the assertions document
+		// both branches but cannot detect swapped ternary arms until the IDs diverge.
 		expect(getProviderDefaultModelId(providerIdentifiers.zai, { isChina: true })).toBe(mainlandZAiDefaultModelId)
 		expect(getProviderDefaultModelId(providerIdentifiers.zai)).toBe(internationalZAiDefaultModelId)
 	})
