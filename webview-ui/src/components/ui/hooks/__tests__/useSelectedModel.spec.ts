@@ -442,6 +442,20 @@ describe("useSelectedModel", () => {
 			expect(result.current.info?.outputPrice).toBe(22.5)
 		})
 
+		it("should apply 1M pricing tier for Claude Opus 4.6 when enabled", () => {
+			const apiConfiguration: ProviderSettings = {
+				apiProvider: "anthropic",
+				apiModelId: "claude-opus-4-6",
+				anthropicBeta1MContext: true,
+			}
+
+			const wrapper = createWrapper()
+			const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper })
+
+			expect(result.current.id).toBe("claude-opus-4-6")
+			expect(result.current.info?.contextWindow).toBe(1_000_000)
+		})
+
 		it.each(["anthropic", "gemini-cli", "fake-ai"] as const)(
 			"should explicitly resolve configured models for %s",
 			(apiProvider) => {
