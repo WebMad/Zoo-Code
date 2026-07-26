@@ -8,6 +8,7 @@ import type { Mock } from "vitest"
 import {
 	ProviderSettings,
 	ModelInfo,
+	anthropicModels,
 	BEDROCK_1M_CONTEXT_MODEL_IDS,
 	litellmDefaultModelInfo,
 	kenariDefaultModelId,
@@ -440,6 +441,23 @@ describe("useSelectedModel", () => {
 			expect(result.current.info?.inputPrice).toBe(6.0)
 			expect(result.current.info?.outputPrice).toBe(22.5)
 		})
+
+		it.each(["anthropic", "gemini-cli", "fake-ai"] as const)(
+			"should explicitly resolve configured models for %s",
+			(apiProvider) => {
+				const apiConfiguration: ProviderSettings = {
+					apiProvider,
+					apiModelId: "claude-sonnet-4-6",
+				}
+
+				const wrapper = createWrapper()
+				const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper })
+
+				expect(result.current.provider).toBe(apiProvider)
+				expect(result.current.id).toBe("claude-sonnet-4-6")
+				expect(result.current.info).toEqual(anthropicModels["claude-sonnet-4-6"])
+			},
+		)
 	})
 
 	describe("bedrock provider with 1M context", () => {

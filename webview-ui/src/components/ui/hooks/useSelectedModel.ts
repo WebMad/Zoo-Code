@@ -418,10 +418,9 @@ function getSelectedModel({
 			const info = routerModels["zoo-gateway"]?.[id]
 			return { id, info }
 		}
-		// case providerIdentifiers.anthropic:
-		// case providerIdentifiers.fakeAi:
-		default: {
-			provider satisfies "anthropic" | "gemini-cli" | "fake-ai"
+		case providerIdentifiers.anthropic:
+		case providerIdentifiers.geminiCli:
+		case providerIdentifiers.fakeAi: {
 			const id = apiConfiguration.apiModelId ?? defaultModelId
 			const baseInfo = anthropicModels[id as keyof typeof anthropicModels]
 
@@ -461,6 +460,10 @@ function getSelectedModel({
 			}
 
 			return { id, info: baseInfo }
+		}
+		default: {
+			provider satisfies never
+			throw new Error(`Unsupported provider: ${provider}`)
 		}
 	}
 }
