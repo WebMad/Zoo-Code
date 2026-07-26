@@ -29,6 +29,9 @@ import {
 	minimaxModels,
 	mimoModels,
 	isOpencodeGoAnthropicFormatModel,
+	ANTHROPIC_API_PROTOCOL,
+	ANTHROPIC_MODEL_ID_PREFIX,
+	CLAUDE_MODEL_ID_FRAGMENT,
 } from "./providers/index.js"
 
 /**
@@ -587,9 +590,6 @@ export const ANTHROPIC_STYLE_PROVIDERS: ProviderName[] = [
 	providerIdentifiers.minimax,
 ]
 
-const CLAUDE_MODEL_ID_FRAGMENT = "claude"
-const ANTHROPIC_MODEL_ID_PREFIX = "anthropic/"
-const ANTHROPIC_API_PROTOCOL = "anthropic"
 const ANTHROPIC_MODEL_GATEWAY_PROVIDERS: ProviderName[] = [
 	providerIdentifiers.vercelAiGateway,
 	providerIdentifiers.zooGateway,
