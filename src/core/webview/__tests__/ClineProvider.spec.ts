@@ -30,7 +30,7 @@ import { safeWriteJson } from "../../../utils/safeWriteJson"
 import { ClineProvider } from "../ClineProvider"
 import { Terminal } from "../../../integrations/terminal/Terminal"
 import { MessageManager } from "../../message-manager"
-import { forceFullModelDetailsLoad } from "../../../api/providers/fetchers/lmstudio"
+import { forceFullModelDetailsLoad, hasLoadedFullDetails } from "../../../api/providers/fetchers/lmstudio"
 
 // Mock setup must come before imports.
 vi.mock("../../prompts/sections/custom-instructions")
@@ -531,13 +531,27 @@ describe("ClineProvider", () => {
 	test("loads full model details when preparing an LM Studio task", async () => {
 		await provider.performPreparationTasks({
 			apiConfiguration: {
-				apiProvider: "lmstudio",
+				apiProvider: providerIdentifiers.lmstudio,
 				lmStudioBaseUrl: "http://localhost:1234",
 				lmStudioModelId: "test-model",
 			},
 		} as Task)
 
 		expect(forceFullModelDetailsLoad).toHaveBeenCalledWith("http://localhost:1234", "test-model")
+	})
+
+	test("does not reload full model details when the LM Studio model is already loaded", async () => {
+		vi.mocked(hasLoadedFullDetails).mockReturnValue(true)
+
+		await provider.performPreparationTasks({
+			apiConfiguration: {
+				apiProvider: providerIdentifiers.lmstudio,
+				lmStudioBaseUrl: "http://localhost:1234",
+				lmStudioModelId: "test-model",
+			},
+		} as Task)
+
+		expect(forceFullModelDetailsLoad).not.toHaveBeenCalled()
 	})
 
 	test("resolveWebviewView hydrates the saved terminalProfile into the process-wide Terminal state", async () => {
@@ -1477,7 +1491,7 @@ describe("ClineProvider", () => {
 
 		test("handles case when no current task exists", async () => {
 			// Clear the cline stack
-			;(provider as any).taskRegistry = new TaskRegistry()
+			Object.assign(provider, { taskRegistry: new TaskRegistry() })
 
 			// Trigger message deletion
 			const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
