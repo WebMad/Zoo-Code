@@ -47,48 +47,37 @@ describe("ProfileValidator", () => {
 				}
 
 				expect(ProfileValidator.isProfileAllowed(profile, allowList)).toBe(true)
+
+				const negativeAllowList: OrganizationAllowList = {
+					allowAll: false,
+					providers: {
+						[canonicalIdentifier]: { allowAll: false, models: ["other-model"] },
+					},
+				}
+
+				expect(ProfileValidator.isProfileAllowed(profile, negativeAllowList)).toBe(false)
 			} finally {
 				identifiers[identifierKey] = originalIdentifier
 			}
 		})
 
 		it.each([
-			{ identifierKey: "fakeAi", profileSettings: {}, modelId: undefined, expected: false },
-			{
-				identifierKey: "fakeAi",
-				profileSettings: {},
-				modelId: undefined,
-				expected: true,
-				providerAllowAll: true,
-			},
+			{ providerAllowAll: false, expected: false },
+			{ providerAllowAll: true, expected: true },
 		])(
-			"preserves canonical fallback behavior when provider allowAll is $providerAllowAll",
-			({ identifierKey, profileSettings, modelId, expected, providerAllowAll = false }) => {
-				const identifiers = providerIdentifiers as Record<string, string>
-				const originalIdentifier = identifiers[identifierKey]
-				const canonicalIdentifier = `canonical-${identifierKey}`
-
-				try {
-					identifiers[identifierKey] = canonicalIdentifier
-
-					const profile = {
-						apiProvider: canonicalIdentifier,
-						...profileSettings,
-					} as unknown as ProviderSettings
-					const allowList: OrganizationAllowList = {
-						allowAll: false,
-						providers: {
-							[canonicalIdentifier]: {
-								allowAll: providerAllowAll,
-								models: modelId ? [modelId] : undefined,
-							},
-						},
-					}
-
-					expect(ProfileValidator.isProfileAllowed(profile, allowList)).toBe(expected)
-				} finally {
-					identifiers[identifierKey] = originalIdentifier
+			"preserves missing-model fallback behavior when provider allowAll is $providerAllowAll",
+			({ providerAllowAll, expected }) => {
+				const profile: ProviderSettings = {
+					apiProvider: providerIdentifiers.openai,
 				}
+				const allowList: OrganizationAllowList = {
+					allowAll: false,
+					providers: {
+						[providerIdentifiers.openai]: { allowAll: providerAllowAll },
+					},
+				}
+
+				expect(ProfileValidator.isProfileAllowed(profile, allowList)).toBe(expected)
 			},
 		)
 
@@ -254,17 +243,17 @@ describe("ProfileValidator", () => {
 
 		// Test specific providers that use apiModelId
 		const apiModelProviders = [
-			"anthropic",
-			"openai-native",
-			"bedrock",
-			"vertex",
-			"gemini",
-			"mistral",
-			"deepseek",
-			"xai",
-			"sambanova",
-			"fireworks",
-			"friendli",
+			providerIdentifiers.anthropic,
+			providerIdentifiers.openaiNative,
+			providerIdentifiers.bedrock,
+			providerIdentifiers.vertex,
+			providerIdentifiers.gemini,
+			providerIdentifiers.mistral,
+			providerIdentifiers.deepseek,
+			providerIdentifiers.xai,
+			providerIdentifiers.sambanova,
+			providerIdentifiers.fireworks,
+			providerIdentifiers.friendli,
 		]
 
 		apiModelProviders.forEach((provider) => {
@@ -276,7 +265,7 @@ describe("ProfileValidator", () => {
 					},
 				}
 				const profile: ProviderSettings = {
-					apiProvider: provider as any, // Type assertion needed here
+					apiProvider: provider,
 					apiModelId: "test-model",
 				}
 
@@ -289,11 +278,11 @@ describe("ProfileValidator", () => {
 			const allowList: OrganizationAllowList = {
 				allowAll: false,
 				providers: {
-					litellm: { allowAll: false, models: ["test-model"] },
+					[providerIdentifiers.litellm]: { allowAll: false, models: ["test-model"] },
 				},
 			}
 			const profile: ProviderSettings = {
-				apiProvider: "litellm" as any,
+				apiProvider: providerIdentifiers.litellm,
 				litellmModelId: "test-model",
 			}
 
@@ -304,11 +293,11 @@ describe("ProfileValidator", () => {
 			const allowList: OrganizationAllowList = {
 				allowAll: false,
 				providers: {
-					"vscode-lm": { allowAll: false, models: ["copilot-gpt-3.5"] },
+					[providerIdentifiers.vscodeLm]: { allowAll: false, models: ["copilot-gpt-3.5"] },
 				},
 			}
 			const profile: ProviderSettings = {
-				apiProvider: "vscode-lm",
+				apiProvider: providerIdentifiers.vscodeLm,
 				vsCodeLmModelSelector: { id: "copilot-gpt-3.5" },
 			}
 
@@ -364,11 +353,11 @@ describe("ProfileValidator", () => {
 			const allowList: OrganizationAllowList = {
 				allowAll: false,
 				providers: {
-					"fake-ai": { allowAll: false },
+					[providerIdentifiers.fakeAi]: { allowAll: false },
 				},
 			}
 			const profile: ProviderSettings = {
-				apiProvider: "fake-ai",
+				apiProvider: providerIdentifiers.fakeAi,
 			}
 
 			expect(ProfileValidator.isProfileAllowed(profile, allowList)).toBe(false)
