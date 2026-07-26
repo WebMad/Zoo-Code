@@ -66,9 +66,17 @@ const KEY_SCOPED_PROVIDERS: ReadonlySet<RouterName> = new Set([
 	providerIdentifiers.moonshot, // Per-key model visibility (api.moonshot.ai vs api.moonshot.cn)
 ])
 
+// Providers whose model lists are scoped to the signed-in user (e.g. per-account
+// allowlists or org policies). For these we MUST NOT cache results on disk or
+// in memory: a sign-in/out cycle could otherwise serve a previous user's model
+// list to the next user, and stale data could mask backend allowlist updates.
+const AUTH_SCOPED_PROVIDERS: ReadonlySet<RouterName> = new Set([
+	providerIdentifiers.zooGateway,
+	providerIdentifiers.kimiCode,
+])
+
 function isAuthScopedProvider(provider: RouterName): boolean {
-	// Signed-in model lists must never cross users through memory, disk, or in-flight caching.
-	return provider === providerIdentifiers.zooGateway || provider === providerIdentifiers.kimiCode
+	return AUTH_SCOPED_PROVIDERS.has(provider)
 }
 
 // Memoize derived digests so the deliberately-structureless KDF runs at most once per
