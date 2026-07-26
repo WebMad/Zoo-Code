@@ -32,6 +32,7 @@ import {
 	ANTHROPIC_API_PROTOCOL,
 	ANTHROPIC_MODEL_ID_PREFIX,
 	CLAUDE_MODEL_ID_FRAGMENT,
+	OPENAI_API_PROTOCOL,
 } from "./providers/index.js"
 
 /**
@@ -635,7 +636,7 @@ export const getApiProtocol = (provider: ProviderName | undefined, modelId?: str
 		return ANTHROPIC_API_PROTOCOL
 	}
 
-	return "openai"
+	return OPENAI_API_PROTOCOL
 }
 
 /**
