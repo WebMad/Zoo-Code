@@ -589,6 +589,7 @@ export const ANTHROPIC_STYLE_PROVIDERS: ProviderName[] = [
 
 const CLAUDE_MODEL_ID_FRAGMENT = "claude"
 const ANTHROPIC_MODEL_ID_PREFIX = "anthropic/"
+const ANTHROPIC_API_PROTOCOL = "anthropic"
 const ANTHROPIC_MODEL_GATEWAY_PROVIDERS: ProviderName[] = [
 	providerIdentifiers.vercelAiGateway,
 	providerIdentifiers.zooGateway,
@@ -596,7 +597,7 @@ const ANTHROPIC_MODEL_GATEWAY_PROVIDERS: ProviderName[] = [
 
 export const getApiProtocol = (provider: ProviderName | undefined, modelId?: string): "anthropic" | "openai" => {
 	if (provider && ANTHROPIC_STYLE_PROVIDERS.includes(provider)) {
-		return "anthropic"
+		return ANTHROPIC_API_PROTOCOL
 	}
 
 	if (
@@ -605,7 +606,7 @@ export const getApiProtocol = (provider: ProviderName | undefined, modelId?: str
 		modelId &&
 		modelId.toLowerCase().includes(CLAUDE_MODEL_ID_FRAGMENT)
 	) {
-		return "anthropic"
+		return ANTHROPIC_API_PROTOCOL
 	}
 
 	// Vercel AI Gateway and Zoo Gateway use the anthropic protocol for anthropic models.
@@ -615,7 +616,7 @@ export const getApiProtocol = (provider: ProviderName | undefined, modelId?: str
 		modelId &&
 		modelId.toLowerCase().startsWith(ANTHROPIC_MODEL_ID_PREFIX)
 	) {
-		return "anthropic"
+		return ANTHROPIC_API_PROTOCOL
 	}
 
 	// Opencode Go routes a subset of its models (Qwen, MiniMax) through the
@@ -631,7 +632,7 @@ export const getApiProtocol = (provider: ProviderName | undefined, modelId?: str
 		modelId &&
 		isOpencodeGoAnthropicFormatModel(modelId)
 	) {
-		return "anthropic"
+		return ANTHROPIC_API_PROTOCOL
 	}
 
 	return "openai"
