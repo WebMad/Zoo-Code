@@ -426,7 +426,7 @@ function getSelectedModel({
 
 			// Apply 1M context beta tier pricing for supported Claude 4 models
 			if (
-				provider === "anthropic" &&
+				provider === providerIdentifiers.anthropic &&
 				(id === "claude-sonnet-4-20250514" ||
 					id === "claude-sonnet-4-5" ||
 					id === "claude-sonnet-4-6" ||
