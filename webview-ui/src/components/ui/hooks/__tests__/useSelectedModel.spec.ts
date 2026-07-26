@@ -23,6 +23,7 @@ import {
 	vscodeLlmDefaultModelId,
 	moonshotDefaultModelId,
 	moonshotModels,
+	providerIdentifiers,
 } from "@roo-code/types"
 
 import { useSelectedModel } from "../useSelectedModel"
@@ -444,7 +445,7 @@ describe("useSelectedModel", () => {
 
 		it("should apply 1M pricing tier for Claude Opus 4.6 when enabled", () => {
 			const apiConfiguration: ProviderSettings = {
-				apiProvider: "anthropic",
+				apiProvider: providerIdentifiers.anthropic,
 				apiModelId: "claude-opus-4-6",
 				anthropicBeta1MContext: true,
 			}
