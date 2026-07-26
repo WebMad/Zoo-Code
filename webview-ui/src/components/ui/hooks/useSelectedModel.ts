@@ -461,9 +461,5 @@ function getSelectedModel({
 
 			return { id, info: baseInfo }
 		}
-		default: {
-			provider satisfies never
-			throw new Error(`Unsupported provider: ${provider}`)
-		}
 	}
 }
