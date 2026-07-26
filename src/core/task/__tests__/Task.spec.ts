@@ -477,7 +477,7 @@ describe("Cline", () => {
 						content: [{ type: "text", text: "test message" }],
 					},
 				])
-				expect(Object.keys(requireDefined(cleanConversationHistory[0]))).toEqual(["role", "content"])
+				expect(Object.keys(cleanConversationHistory[0]!)).toEqual(["role", "content"])
 			})
 
 			it("should shape image blocks for API compatibility before request construction", async () => {
@@ -1837,9 +1837,7 @@ describe("Cline", () => {
 
 					expect(summarizeConversation).toHaveBeenCalled()
 					const [options] = vi.mocked(summarizeConversation).mock.calls.at(-1)!
-					expect(options.metadata?.abortSignal).toBe(
-						requireDefined(task.currentRequestAbortController).signal,
-					)
+					expect(options.metadata?.abortSignal).toBe(task.currentRequestAbortController!.signal)
 				})
 
 				it("should omit abortSignal from condenseContext metadata when no current request exists", async () => {
@@ -1872,7 +1870,7 @@ describe("Cline", () => {
 					vi.spyOn(getTaskTestAccess(task), "getSystemPrompt").mockResolvedValue("mock system prompt")
 
 					vi.spyOn(task.api, "getModel").mockReturnValue({
-						id: requireDefined(mockApiConfig.apiModelId),
+						id: mockApiConfig.apiModelId!,
 						info: {
 							supportsImages: false,
 							supportsPromptCache: true,
@@ -1926,9 +1924,7 @@ describe("Cline", () => {
 					const [, , metadata] = createMessageSpy.mock.calls[0]!
 
 					expect(metadata).toBeDefined()
-					expect(requireDefined(metadata).abortSignal).toBe(
-						requireDefined(task.currentRequestAbortController).signal,
-					)
+					expect(metadata!.abortSignal).toBe(task.currentRequestAbortController!.signal)
 				})
 
 				it("configures tool restrictions for Gemini requests", async () => {
@@ -2010,7 +2006,7 @@ describe("Cline", () => {
 
 					vi.spyOn(getTaskTestAccess(task), "getSystemPrompt").mockResolvedValue("mock system prompt")
 					vi.spyOn(task.api, "getModel").mockReturnValue({
-						id: requireDefined(mockApiConfig.apiModelId),
+						id: mockApiConfig.apiModelId!,
 						info: {
 							supportsImages: false,
 							supportsPromptCache: true,
@@ -2095,7 +2091,7 @@ describe("Cline", () => {
 					vi.spyOn(getTaskTestAccess(task), "getSystemPrompt").mockResolvedValue("mock system prompt")
 
 					vi.spyOn(task.api, "getModel").mockReturnValue({
-						id: requireDefined(mockApiConfig.apiModelId),
+						id: mockApiConfig.apiModelId!,
 						info: {
 							supportsImages: false,
 							supportsPromptCache: true,
@@ -2146,10 +2142,10 @@ describe("Cline", () => {
 
 					// Get the signal from metadata
 					const [, , metadata] = createMessageSpy.mock.calls[0]!
-					const metadataSignal = requireDefined(metadata).abortSignal
+					const metadataSignal = metadata!.abortSignal
 
 					// The signal in metadata should be the same as the one from currentRequestAbortController
-					expect(metadataSignal).toBe(requireDefined(task.currentRequestAbortController).signal)
+					expect(metadataSignal).toBe(task.currentRequestAbortController!.signal)
 				})
 
 				it("should omit createMessage abortSignal metadata when no current request exists before condense metadata checks", async () => {
@@ -2162,7 +2158,7 @@ describe("Cline", () => {
 
 					vi.spyOn(getTaskTestAccess(task), "getSystemPrompt").mockResolvedValue("mock system prompt")
 					vi.spyOn(task.api, "getModel").mockReturnValue({
-						id: requireDefined(mockApiConfig.apiModelId),
+						id: mockApiConfig.apiModelId!,
 						info: {
 							supportsImages: false,
 							supportsPromptCache: true,
@@ -2213,10 +2209,8 @@ describe("Cline", () => {
 
 					const [, , metadata] = createMessageSpy.mock.calls[0]!
 					expect(metadata).toBeDefined()
-					expect("abortSignal" in requireDefined(metadata)).toBe(true)
-					expect(requireDefined(metadata).abortSignal).toBe(
-						requireDefined(task.currentRequestAbortController).signal,
-					)
+					expect("abortSignal" in metadata!).toBe(true)
+					expect(metadata!.abortSignal).toBe(task.currentRequestAbortController!.signal)
 				})
 
 				it("should keep createMessage abortSignal metadata unaborted before cancellation", async () => {
@@ -2229,7 +2223,7 @@ describe("Cline", () => {
 
 					vi.spyOn(getTaskTestAccess(task), "getSystemPrompt").mockResolvedValue("mock system prompt")
 					vi.spyOn(task.api, "getModel").mockReturnValue({
-						id: requireDefined(mockApiConfig.apiModelId),
+						id: mockApiConfig.apiModelId!,
 						info: {
 							supportsImages: false,
 							supportsPromptCache: true,
@@ -2277,7 +2271,7 @@ describe("Cline", () => {
 					await iterator.next()
 
 					const [, , metadata] = createMessageSpy.mock.calls[0]!
-					expect(metadata?.abortSignal).toBe(requireDefined(task.currentRequestAbortController).signal)
+					expect(metadata?.abortSignal).toBe(task.currentRequestAbortController!.signal)
 					expect(metadata?.abortSignal?.aborted).toBe(false)
 				})
 			})
@@ -2292,7 +2286,7 @@ describe("Cline", () => {
 
 				vi.spyOn(getTaskTestAccess(task), "getSystemPrompt").mockResolvedValue("mock system prompt")
 				vi.spyOn(task.api, "getModel").mockReturnValue({
-					id: requireDefined(mockApiConfig.apiModelId),
+					id: mockApiConfig.apiModelId!,
 					info: {
 						supportsImages: false,
 						supportsPromptCache: true,
@@ -2334,9 +2328,9 @@ describe("Cline", () => {
 
 				expect(createMessageSpy).toHaveBeenCalledTimes(1)
 				const [, , metadata1] = createMessageSpy.mock.calls[0]!
-				const signal1 = requireDefined(metadata1).abortSignal
+				const signal1 = metadata1!.abortSignal
 				expect(signal1).toBeDefined()
-				expect(requireDefined(signal1).aborted).toBe(false)
+				expect(signal1!.aborted).toBe(false)
 
 				// Simulate request completion and cancellation to clear the controller
 				task.cancelCurrentRequest()
@@ -2348,12 +2342,12 @@ describe("Cline", () => {
 
 				expect(createMessageSpy).toHaveBeenCalledTimes(2)
 				const [, , metadata2] = createMessageSpy.mock.calls[1]!
-				const signal2 = requireDefined(metadata2).abortSignal
+				const signal2 = metadata2!.abortSignal
 
 				// Signals should be different instances (fresh controller per request)
 				expect(signal2).not.toBe(signal1)
-				expect(signal2).toBe(requireDefined(task.currentRequestAbortController).signal)
-				expect(requireDefined(signal2).aborted).toBe(false)
+				expect(signal2).toBe(task.currentRequestAbortController!.signal)
+				expect(signal2!.aborted).toBe(false)
 			})
 
 			it("should propagate AbortController signal through attemptApiRequest context-window retry path", async () => {
@@ -2372,7 +2366,7 @@ describe("Cline", () => {
 					contextTokens: 120000,
 				})
 				vi.spyOn(task.api, "getModel").mockReturnValue({
-					id: requireDefined(mockApiConfig.apiModelId),
+					id: mockApiConfig.apiModelId!,
 					info: {
 						supportsImages: false,
 						supportsPromptCache: true,
