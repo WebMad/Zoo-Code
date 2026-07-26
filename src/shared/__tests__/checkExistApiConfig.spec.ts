@@ -1,6 +1,6 @@
 // npx vitest run src/shared/__tests__/checkExistApiConfig.spec.ts
 
-import type { ProviderSettings } from "@roo-code/types"
+import { providerIdentifiers, type ProviderSettings } from "@roo-code/types"
 
 import { checkExistKey } from "../checkExistApiConfig"
 
@@ -66,6 +66,19 @@ describe("checkExistKey", () => {
 		expect(checkExistKey(config)).toBe(true)
 	})
 
+	it("recognizes keyless providers through their canonical identifiers", () => {
+		const identifiers = providerIdentifiers as Record<string, string>
+		const originalIdentifier = identifiers.fakeAi!
+
+		try {
+			identifiers.fakeAi = "canonical-fake-ai"
+
+			expect(checkExistKey({ apiProvider: identifiers.fakeAi } as ProviderSettings)).toBe(true)
+		} finally {
+			identifiers.fakeAi = originalIdentifier
+		}
+	})
+
 	it("should return true for openai-codex provider without API key", () => {
 		const config: ProviderSettings = {
 			apiProvider: "openai-codex",
@@ -93,6 +106,21 @@ describe("checkExistKey", () => {
 			kimiCodeAuthMethod: "oauth",
 		}
 		expect(checkExistKey(config)).toBe(true)
+	})
+
+	it("recognizes OAuth authentication through the canonical Kimi Code identifier", () => {
+		const identifiers = providerIdentifiers as Record<string, string>
+		const originalIdentifier = identifiers.kimiCode!
+
+		try {
+			identifiers.kimiCode = "canonical-kimi-code"
+
+			expect(
+				checkExistKey({ apiProvider: identifiers.kimiCode, kimiCodeAuthMethod: "oauth" } as ProviderSettings),
+			).toBe(true)
+		} finally {
+			identifiers.kimiCode = originalIdentifier
+		}
 	})
 
 	it("should return true for kimi-code provider without auth method (defaults to OAuth)", () => {
@@ -126,6 +154,19 @@ describe("checkExistKey", () => {
 		}
 		expect(checkExistKey(config)).toBe(false)
 		expect(checkExistKey(config, false)).toBe(false)
+	})
+
+	it("recognizes session authentication through the canonical Zoo Gateway identifier", () => {
+		const identifiers = providerIdentifiers as Record<string, string>
+		const originalIdentifier = identifiers.zooGateway!
+
+		try {
+			identifiers.zooGateway = "canonical-zoo-gateway"
+
+			expect(checkExistKey({ apiProvider: identifiers.zooGateway } as ProviderSettings, true)).toBe(true)
+		} finally {
+			identifiers.zooGateway = originalIdentifier
+		}
 	})
 
 	it("should return true for zoo-gateway when profile has zooSessionToken", () => {

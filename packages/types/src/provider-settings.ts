@@ -581,21 +581,25 @@ export const modelIdKeysByProvider: Record<TypicalProvider, ModelIdKey> = {
  */
 
 // Providers that use Anthropic-style API protocol.
-export const ANTHROPIC_STYLE_PROVIDERS: ProviderName[] = ["anthropic", "bedrock", "minimax"]
+export const ANTHROPIC_STYLE_PROVIDERS: ProviderName[] = [
+	providerIdentifiers.anthropic,
+	providerIdentifiers.bedrock,
+	providerIdentifiers.minimax,
+]
 
 export const getApiProtocol = (provider: ProviderName | undefined, modelId?: string): "anthropic" | "openai" => {
 	if (provider && ANTHROPIC_STYLE_PROVIDERS.includes(provider)) {
 		return "anthropic"
 	}
 
-	if (provider && provider === "vertex" && modelId && modelId.toLowerCase().includes("claude")) {
+	if (provider && provider === providerIdentifiers.vertex && modelId && modelId.toLowerCase().includes("claude")) {
 		return "anthropic"
 	}
 
 	// Vercel AI Gateway and Zoo Gateway use the anthropic protocol for anthropic models.
 	if (
 		provider &&
-		["vercel-ai-gateway", "zoo-gateway"].includes(provider) &&
+		(provider === providerIdentifiers.vercelAiGateway || provider === providerIdentifiers.zooGateway) &&
 		modelId &&
 		modelId.toLowerCase().startsWith("anthropic/")
 	) {
@@ -609,7 +613,12 @@ export const getApiProtocol = (provider: ProviderName | undefined, modelId?: str
 	// models must use the anthropic protocol so token/cost aggregation adds the
 	// cache tokens back into the input total — otherwise the cached prefix is
 	// dropped from `contextTokens`, undercounting context-window usage.
-	if (provider && provider === "opencode-go" && modelId && isOpencodeGoAnthropicFormatModel(modelId)) {
+	if (
+		provider &&
+		provider === providerIdentifiers.opencodeGo &&
+		modelId &&
+		isOpencodeGoAnthropicFormatModel(modelId)
+	) {
 		return "anthropic"
 	}
 
