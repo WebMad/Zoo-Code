@@ -72,14 +72,14 @@ describe("checkExistKey", () => {
 
 	it("should return true for openai-codex provider without API key", () => {
 		const config: ProviderSettings = {
-			apiProvider: "openai-codex",
+			apiProvider: providerIdentifiers.openaiCodex,
 		}
 		expect(checkExistKey(config)).toBe(true)
 	})
 
 	it("should return true for qwen-code provider without API key", () => {
 		const config: ProviderSettings = {
-			apiProvider: "qwen-code",
+			apiProvider: providerIdentifiers.qwenCode,
 		}
 		expect(checkExistKey(config)).toBe(true)
 	})
