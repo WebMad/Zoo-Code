@@ -71,6 +71,14 @@ export const serviceTierSchema = z.enum(serviceTiers)
 export type ServiceTier = z.infer<typeof serviceTierSchema>
 
 /**
+ * Service tiers for Codex requests authenticated through a ChatGPT subscription.
+ */
+export enum OpenAiCodexServiceTier {
+	Default = "default",
+	Priority = "priority",
+}
+
+/**
  * ModelParameter
  */
 
