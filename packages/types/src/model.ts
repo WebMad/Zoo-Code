@@ -54,12 +54,21 @@ export const verbosityLevelsSchema = z.enum(verbosityLevels)
 
 export type VerbosityLevel = z.infer<typeof verbosityLevelsSchema>
 
+/** Serialized service tier field used in provider request payloads and responses. */
+export const SERVICE_TIER_KEY = "service_tier"
+
 /**
- * Service tiers (OpenAI Responses API)
+ * Service tiers for the public OpenAI Responses API.
  */
-export const serviceTiers = ["default", "flex", "priority"] as const
+export enum OpenAiServiceTier {
+	Default = "default",
+	Flex = "flex",
+	Priority = "priority",
+}
+
+export const serviceTiers = Object.values(OpenAiServiceTier) as [`${OpenAiServiceTier}`, ...`${OpenAiServiceTier}`[]]
 export const serviceTierSchema = z.enum(serviceTiers)
-export type ServiceTier = z.infer<typeof serviceTierSchema>
+export type ServiceTier = `${OpenAiServiceTier}`
 
 /**
  * ModelParameter
