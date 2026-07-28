@@ -1,6 +1,11 @@
 import React from "react"
 
-import { OpenAiCodexServiceTier, providerIdentifiers, type ProviderSettings } from "@roo-code/types"
+import {
+	OPEN_AI_CODEX_SERVICE_TIER_KEY,
+	OpenAiCodexServiceTier,
+	providerIdentifiers,
+	type ProviderSettings,
+} from "@roo-code/types"
 
 import { fireEvent, render, screen } from "@/utils/test-utils"
 
@@ -69,20 +74,20 @@ describe("OpenAICodex speed selector", () => {
 	it("selects Fast from a saved preference and persists changes through the settings callback", () => {
 		const { selector, setApiConfigurationField } = renderSelector({
 			apiProvider: providerIdentifiers.openaiCodex,
-			openAiCodexServiceTier: OpenAiCodexServiceTier.Priority,
+			[OPEN_AI_CODEX_SERVICE_TIER_KEY]: OpenAiCodexServiceTier.Priority,
 		})
 
 		expect(selector).toHaveValue(OpenAiCodexServiceTier.Priority)
 
 		fireEvent.change(selector, { target: { value: OpenAiCodexServiceTier.Default } })
 		expect(setApiConfigurationField).toHaveBeenLastCalledWith(
-			"openAiCodexServiceTier",
+			OPEN_AI_CODEX_SERVICE_TIER_KEY,
 			OpenAiCodexServiceTier.Default,
 		)
 
 		fireEvent.change(selector, { target: { value: OpenAiCodexServiceTier.Priority } })
 		expect(setApiConfigurationField).toHaveBeenLastCalledWith(
-			"openAiCodexServiceTier",
+			OPEN_AI_CODEX_SERVICE_TIER_KEY,
 			OpenAiCodexServiceTier.Priority,
 		)
 	})

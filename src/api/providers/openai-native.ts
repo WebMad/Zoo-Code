@@ -14,6 +14,7 @@ import {
 	type VerbosityLevel,
 	type ReasoningEffortExtended,
 	OpenAiServiceTier,
+	SERVICE_TIER_KEY,
 	type ServiceTier,
 	ApiProviderError,
 } from "@roo-code/types"
@@ -319,7 +320,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			max_output_tokens?: number
 			store?: boolean
 			instructions?: string
-			service_tier?: ServiceTier
+			[SERVICE_TIER_KEY]?: ServiceTier
 			include?: string[]
 			/** Prompt cache retention policy: "in_memory" (default) or "24h" for extended caching */
 			prompt_cache_retention?: "in_memory" | "24h"
@@ -371,7 +372,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			// Include tier when selected and supported by the model, or when explicitly "default"
 			...(requestedTier &&
 				(requestedTier === OpenAiServiceTier.Default || allowedTierNames.has(requestedTier)) && {
-					service_tier: requestedTier,
+					[SERVICE_TIER_KEY]: requestedTier,
 				}),
 			// Enable extended prompt cache retention for models that support it.
 			// This uses the OpenAI Responses API `prompt_cache_retention` parameter.
@@ -706,8 +707,8 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 							const parsed = JSON.parse(data)
 
 							// Capture resolved service tier if present
-							if (parsed.response?.service_tier) {
-								this.lastServiceTier = parsed.response.service_tier as ServiceTier
+							if (parsed.response?.[SERVICE_TIER_KEY]) {
+								this.lastServiceTier = parsed.response[SERVICE_TIER_KEY] as ServiceTier
 							}
 							// Capture complete output array (includes reasoning items with encrypted_content)
 							if (parsed.response?.output && Array.isArray(parsed.response.output)) {
@@ -1017,8 +1018,8 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 								}
 							} else if (parsed.type === "response.completed" || parsed.type === "response.done") {
 								// Capture resolved service tier if present
-								if (parsed.response?.service_tier) {
-									this.lastServiceTier = parsed.response.service_tier as ServiceTier
+								if (parsed.response?.[SERVICE_TIER_KEY]) {
+									this.lastServiceTier = parsed.response[SERVICE_TIER_KEY] as ServiceTier
 								}
 								// Capture top-level response id
 								if (parsed.response?.id) {
@@ -1147,8 +1148,8 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 	 */
 	private async *processEvent(event: any, model: OpenAiNativeModel): ApiStream {
 		// Capture resolved service tier when available
-		if (event?.response?.service_tier) {
-			this.lastServiceTier = event.response.service_tier as ServiceTier
+		if (event?.response?.[SERVICE_TIER_KEY]) {
+			this.lastServiceTier = event.response[SERVICE_TIER_KEY] as ServiceTier
 		}
 		// Capture complete output array (includes reasoning items with encrypted_content)
 		if (event?.response?.output && Array.isArray(event.response.output)) {
@@ -1514,7 +1515,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			const requestedTier = (this.options.openAiNativeServiceTier as ServiceTier | undefined) || undefined
 			const allowedTierNames = new Set(model.info.tiers?.map((t) => t.name).filter(Boolean) || [])
 			if (requestedTier && (requestedTier === OpenAiServiceTier.Default || allowedTierNames.has(requestedTier))) {
-				requestBody.service_tier = requestedTier
+				requestBody[SERVICE_TIER_KEY] = requestedTier
 			}
 
 			// Add reasoning if supported

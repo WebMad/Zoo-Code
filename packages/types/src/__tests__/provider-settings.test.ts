@@ -1,5 +1,6 @@
 import {
 	getApiProtocol,
+	OPEN_AI_CODEX_SERVICE_TIER_KEY,
 	PROVIDER_SETTINGS_KEYS,
 	providerSettingsSchema,
 	providerSettingsSchemaDiscriminated,
@@ -12,12 +13,12 @@ describe("OpenAI Codex provider settings", () => {
 		const settings = {
 			apiProvider: providerIdentifiers.openaiCodex,
 			apiModelId: "gpt-5.6-sol",
-			openAiCodexServiceTier: OpenAiCodexServiceTier.Priority,
+			[OPEN_AI_CODEX_SERVICE_TIER_KEY]: OpenAiCodexServiceTier.Priority,
 		}
 
 		expect(providerSettingsSchema.parse(settings)).toEqual(settings)
 		expect(providerSettingsSchemaDiscriminated.parse(settings)).toEqual(settings)
-		expect(PROVIDER_SETTINGS_KEYS).toContain("openAiCodexServiceTier")
+		expect(PROVIDER_SETTINGS_KEYS).toContain(OPEN_AI_CODEX_SERVICE_TIER_KEY)
 	})
 
 	it.each([undefined, OpenAiCodexServiceTier.Default])(
@@ -26,7 +27,7 @@ describe("OpenAI Codex provider settings", () => {
 			const standardSettings = {
 				apiProvider: providerIdentifiers.openaiCodex,
 				apiModelId: "gpt-5.6-sol",
-				...(openAiCodexServiceTier ? { openAiCodexServiceTier } : {}),
+				...(openAiCodexServiceTier ? { [OPEN_AI_CODEX_SERVICE_TIER_KEY]: openAiCodexServiceTier } : {}),
 			}
 
 			expect(providerSettingsSchemaDiscriminated.parse(standardSettings)).toEqual(standardSettings)
@@ -38,7 +39,7 @@ describe("OpenAI Codex provider settings", () => {
 			providerSettingsSchemaDiscriminated.safeParse({
 				apiProvider: providerIdentifiers.openaiCodex,
 				apiModelId: "gpt-5.6-sol",
-				openAiCodexServiceTier: OpenAiServiceTier.Flex,
+				[OPEN_AI_CODEX_SERVICE_TIER_KEY]: OpenAiServiceTier.Flex,
 			}).success,
 		).toBe(false)
 	})

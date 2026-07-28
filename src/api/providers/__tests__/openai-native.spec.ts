@@ -13,7 +13,7 @@ vitest.mock("@roo-code/telemetry", () => ({
 import { Anthropic } from "@anthropic-ai/sdk"
 import OpenAI from "openai"
 
-import { ApiProviderError, OpenAiServiceTier } from "@roo-code/types"
+import { ApiProviderError, OpenAiServiceTier, SERVICE_TIER_KEY } from "@roo-code/types"
 
 import { OpenAiNativeHandler } from "../openai-native"
 import { ApiHandlerOptions } from "../../../shared/api"
@@ -139,7 +139,7 @@ describe("OpenAiNativeHandler", () => {
 				}
 
 				expect(mockResponsesCreate).toHaveBeenCalledWith(
-					expect.objectContaining({ service_tier: serviceTier }),
+					expect.objectContaining({ [SERVICE_TIER_KEY]: serviceTier }),
 					expect.any(Object),
 				)
 			},
@@ -259,7 +259,7 @@ describe("OpenAiNativeHandler", () => {
 				expect(mockResponsesCreate).toHaveBeenCalledWith(
 					expect.objectContaining({
 						stream: false,
-						service_tier: serviceTier,
+						[SERVICE_TIER_KEY]: serviceTier,
 					}),
 					expect.any(Object),
 				)

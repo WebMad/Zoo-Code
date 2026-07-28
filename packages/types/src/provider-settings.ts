@@ -42,6 +42,7 @@ import {
  */
 
 export const DEFAULT_CONSECUTIVE_MISTAKE_LIMIT = 3
+export const OPEN_AI_CODEX_SERVICE_TIER_KEY = "openAiCodexServiceTier"
 
 /**
  * DynamicProvider
@@ -284,7 +285,9 @@ const geminiCliSchema = apiModelIdProviderModelSchema.extend({
 
 const openAiCodexSchema = apiModelIdProviderModelSchema.extend({
 	// Codex "Fast" mode maps to the Responses API priority service tier.
-	openAiCodexServiceTier: z.enum([OpenAiCodexServiceTier.Default, OpenAiCodexServiceTier.Priority]).optional(),
+	[OPEN_AI_CODEX_SERVICE_TIER_KEY]: z
+		.enum([OpenAiCodexServiceTier.Default, OpenAiCodexServiceTier.Priority])
+		.optional(),
 })
 
 const openAiNativeSchema = apiModelIdProviderModelSchema.extend({

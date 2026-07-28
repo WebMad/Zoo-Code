@@ -5,10 +5,12 @@ import OpenAI from "openai"
 
 import {
 	type ModelInfo,
+	OPEN_AI_CODEX_SERVICE_TIER_KEY,
 	OpenAiCodexServiceTier,
 	openAiCodexDefaultModelId,
 	OpenAiCodexModelId,
 	openAiCodexModels,
+	SERVICE_TIER_KEY,
 	type ReasoningEffort,
 	type ReasoningEffortExtended,
 	ApiProviderError,
@@ -41,7 +43,9 @@ const LUNA_MODEL_ID = "gpt-5.6-luna"
 const LUNA_CODEX_VERSION = "0.144.0"
 
 const getOpenAiCodexServiceTier = (options: ApiHandlerOptions): OpenAiCodexRequestServiceTier | undefined =>
-	options.openAiCodexServiceTier === OpenAiCodexServiceTier.Priority ? OpenAiCodexServiceTier.Priority : undefined
+	options[OPEN_AI_CODEX_SERVICE_TIER_KEY] === OpenAiCodexServiceTier.Priority
+		? OpenAiCodexServiceTier.Priority
+		: undefined
 
 function stripInputImageDetail(value: any): any {
 	if (Array.isArray(value)) {
@@ -371,7 +375,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 			model: string
 			input: Array<{ role: "user" | "assistant"; content: any[] } | { type: string; content: string }>
 			stream: boolean
-			service_tier?: OpenAiCodexRequestServiceTier
+			[SERVICE_TIER_KEY]?: OpenAiCodexRequestServiceTier
 			reasoning?: { effort?: ReasoningEffortExtended; summary?: "auto" }
 			temperature?: number
 			store?: boolean
@@ -397,7 +401,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 			stream: true,
 			store: false,
 			instructions: systemPrompt,
-			...(serviceTier ? { service_tier: serviceTier } : {}),
+			...(serviceTier ? { [SERVICE_TIER_KEY]: serviceTier } : {}),
 			// Only include encrypted reasoning content when reasoning effort is set
 			...(reasoningEffort ? { include: ["reasoning.encrypted_content"] } : {}),
 			...(reasoningEffort
@@ -1282,7 +1286,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 				],
 				stream: false,
 				store: false,
-				...(serviceTier ? { service_tier: serviceTier } : {}),
+				...(serviceTier ? { [SERVICE_TIER_KEY]: serviceTier } : {}),
 				...(reasoningEffort ? { include: ["reasoning.encrypted_content"] } : {}),
 			}
 

@@ -2,7 +2,12 @@
 
 import { ExtensionContext } from "vscode"
 
-import { OpenAiCodexServiceTier, providerIdentifiers, type ProviderSettings } from "@roo-code/types"
+import {
+	OPEN_AI_CODEX_SERVICE_TIER_KEY,
+	OpenAiCodexServiceTier,
+	providerIdentifiers,
+	type ProviderSettings,
+} from "@roo-code/types"
 
 import { ProviderSettingsManager, ProviderProfiles, SyncCloudProfilesResult } from "../ProviderSettingsManager"
 
@@ -465,14 +470,14 @@ describe("ProviderSettingsManager", () => {
 				await providerSettingsManager.saveConfig("codex", {
 					apiProvider: providerIdentifiers.openaiCodex,
 					apiModelId: "gpt-5.6-sol",
-					openAiCodexServiceTier,
+					[OPEN_AI_CODEX_SERVICE_TIER_KEY]: openAiCodexServiceTier,
 				})
 
 				const storedProfiles = JSON.parse(mockSecrets.store.mock.calls.at(-1)?.[1])
 				expect(storedProfiles.apiConfigs.codex).toMatchObject({
 					apiProvider: providerIdentifiers.openaiCodex,
 					apiModelId: "gpt-5.6-sol",
-					openAiCodexServiceTier,
+					[OPEN_AI_CODEX_SERVICE_TIER_KEY]: openAiCodexServiceTier,
 				})
 			},
 		)

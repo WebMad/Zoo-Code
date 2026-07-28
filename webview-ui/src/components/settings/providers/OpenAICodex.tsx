@@ -1,6 +1,7 @@
 import React from "react"
 
 import {
+	OPEN_AI_CODEX_SERVICE_TIER_KEY,
 	OpenAiCodexServiceTier,
 	type ProviderSettings,
 	openAiCodexDefaultModelId,
@@ -21,8 +22,6 @@ import { vscode } from "@src/utils/vscode"
 
 import { ModelPicker } from "../ModelPicker"
 import { OpenAICodexRateLimitDashboard } from "./OpenAICodexRateLimitDashboard"
-
-const OPEN_AI_CODEX_SERVICE_TIER_KEY = "openAiCodexServiceTier"
 
 interface OpenAICodexProps {
 	apiConfiguration: ProviderSettings
