@@ -106,4 +106,24 @@ describe("ModelInfoView service tier pricing", () => {
 
 		expect(screen.queryByText("Service tier pricing")).not.toBeInTheDocument()
 	})
+
+	it("shows unavailable prices when neither the tier nor Standard defines them", () => {
+		render(
+			<ModelInfoView
+				{...defaultProps}
+				apiProvider={providerIdentifiers.openaiNative}
+				modelInfo={{
+					contextWindow: 128_000,
+					supportsPromptCache: false,
+					tiers: [
+						{ name: OpenAiServiceTier.Flex, contextWindow: 128_000 },
+						{ name: OpenAiServiceTier.Priority, contextWindow: 128_000 },
+					],
+				}}
+			/>,
+		)
+
+		expect(getPricingRowValues("Flex")).toEqual(["Flex", "—", "—", "—"])
+		expect(getPricingRowValues("Priority")).toEqual(["Priority", "—", "—", "—"])
+	})
 })

@@ -217,6 +217,48 @@ describe("OpenAiNativeHandler", () => {
 			expect(chunks).toContainEqual(expect.objectContaining({ type: "usage", totalCost: 0.00275 }))
 		})
 
+		it("captures the resolved tier from a manual SSE completion event", async () => {
+			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			const mockFetch = vitest.fn().mockResolvedValue({
+				ok: true,
+				body: new ReadableStream({
+					start(controller) {
+						controller.enqueue(
+							new TextEncoder().encode(
+								`data: ${JSON.stringify({
+									type: "response.completed",
+									response: { [SERVICE_TIER_KEY]: OpenAiServiceTier.Priority },
+								})}\n\n`,
+							),
+						)
+						controller.enqueue(
+							new TextEncoder().encode(
+								`data: ${JSON.stringify({
+									type: "response.usage",
+									usage: { input_tokens: 100, output_tokens: 20 },
+								})}\n\n`,
+							),
+						)
+						controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
+						controller.close()
+					},
+				}),
+			})
+			global.fetch = mockFetch as typeof fetch
+			handler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-5.6-sol",
+				openAiNativeServiceTier: OpenAiServiceTier.Default,
+			})
+
+			const chunks = []
+			for await (const chunk of handler.createMessage(systemPrompt, messages)) {
+				chunks.push(chunk)
+			}
+
+			expect(chunks).toContainEqual(expect.objectContaining({ type: "usage", totalCost: 0.00275 }))
+		})
+
 		it("should handle streaming responses via Responses API", async () => {
 			// Mock fetch for Responses API fallback
 			const mockFetch = vitest.fn().mockResolvedValue({
