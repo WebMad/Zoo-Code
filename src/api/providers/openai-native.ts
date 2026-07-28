@@ -1017,10 +1017,6 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 									)
 								}
 							} else if (parsed.type === "response.completed" || parsed.type === "response.done") {
-								// Capture resolved service tier if present
-								if (parsed.response?.[SERVICE_TIER_KEY]) {
-									this.lastServiceTier = parsed.response[SERVICE_TIER_KEY] as ServiceTier
-								}
 								// Capture top-level response id
 								if (parsed.response?.id) {
 									this.lastResponseId = parsed.response.id as string
