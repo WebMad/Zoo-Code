@@ -64,11 +64,16 @@ describe("Task token usage throttling", () => {
 	let mockProvider: any
 	let mockApiConfiguration: ProviderSettings
 	let task: Task
+	let consoleLogSpy: ReturnType<typeof vi.spyOn>
 
 	beforeEach(() => {
 		// Reset all mocks
 		vi.clearAllMocks()
 		vi.useFakeTimers()
+		// Task.dispose() logs during afterEach. Under the full coverage suite, forwarding
+		// those teardown logs can race with Vitest worker shutdown and leave
+		// onUserConsoleLog RPC calls pending.
+		consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {})
 
 		// Mock provider
 		mockProvider = {
@@ -97,10 +102,11 @@ describe("Task token usage throttling", () => {
 	})
 
 	afterEach(() => {
-		vi.useRealTimers()
 		if (task && !task.abort) {
 			task.dispose()
 		}
+		consoleLogSpy.mockRestore()
+		vi.useRealTimers()
 	})
 
 	test("should emit TaskTokenUsageUpdated immediately on first change", async () => {
