@@ -145,6 +145,78 @@ describe("OpenAiNativeHandler", () => {
 			},
 		)
 
+		it("prices SDK stream usage using the service tier resolved by OpenAI", async () => {
+			mockResponsesCreate.mockResolvedValue({
+				async *[Symbol.asyncIterator]() {
+					yield {
+						type: "response.done",
+						response: {
+							[SERVICE_TIER_KEY]: OpenAiServiceTier.Priority,
+							usage: { input_tokens: 100, output_tokens: 20 },
+						},
+					}
+				},
+			})
+			handler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-5.6-sol",
+				openAiNativeServiceTier: OpenAiServiceTier.Default,
+			})
+
+			const chunks = []
+			for await (const chunk of handler.createMessage(systemPrompt, messages)) {
+				chunks.push(chunk)
+			}
+
+			expect(chunks).toContainEqual(
+				expect.objectContaining({
+					type: "usage",
+					inputTokens: 100,
+					outputTokens: 20,
+					totalCost: 0.00275,
+				}),
+			)
+		})
+
+		it("requests the configured tier but prices manual SSE fallback usage using OpenAI's resolved tier", async () => {
+			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+			const mockFetch = vitest.fn().mockResolvedValue({
+				ok: true,
+				body: new ReadableStream({
+					start(controller) {
+						controller.enqueue(
+							new TextEncoder().encode(
+								`data: ${JSON.stringify({
+									type: "response.done",
+									response: {
+										[SERVICE_TIER_KEY]: OpenAiServiceTier.Priority,
+										usage: { input_tokens: 100, output_tokens: 20 },
+									},
+								})}\n\n`,
+							),
+						)
+						controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
+						controller.close()
+					},
+				}),
+			})
+			global.fetch = mockFetch as typeof fetch
+			handler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-5.6-sol",
+				openAiNativeServiceTier: OpenAiServiceTier.Default,
+			})
+
+			const chunks = []
+			for await (const chunk of handler.createMessage(systemPrompt, messages)) {
+				chunks.push(chunk)
+			}
+
+			const [, request] = mockFetch.mock.calls[0]
+			expect(JSON.parse(request.body)).toMatchObject({ [SERVICE_TIER_KEY]: OpenAiServiceTier.Default })
+			expect(chunks).toContainEqual(expect.objectContaining({ type: "usage", totalCost: 0.00275 }))
+		})
+
 		it("should handle streaming responses via Responses API", async () => {
 			// Mock fetch for Responses API fallback
 			const mockFetch = vitest.fn().mockResolvedValue({
