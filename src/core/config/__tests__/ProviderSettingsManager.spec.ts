@@ -451,6 +451,32 @@ describe("ProviderSettingsManager", () => {
 			expect(storedConfig).toEqual(expectedConfig)
 		})
 
+		it.each(["default", "priority"] as const)(
+			"should persist the OpenAI Codex %s speed preference",
+			async (openAiCodexServiceTier) => {
+				mockSecrets.get.mockResolvedValue(
+					JSON.stringify({
+						currentApiConfigName: "default",
+						apiConfigs: { default: {} },
+						modeApiConfigs: {},
+					}),
+				)
+
+				await providerSettingsManager.saveConfig("codex", {
+					apiProvider: "openai-codex",
+					apiModelId: "gpt-5.6-sol",
+					openAiCodexServiceTier,
+				})
+
+				const storedProfiles = JSON.parse(mockSecrets.store.mock.calls.at(-1)?.[1])
+				expect(storedProfiles.apiConfigs.codex).toMatchObject({
+					apiProvider: "openai-codex",
+					apiModelId: "gpt-5.6-sol",
+					openAiCodexServiceTier,
+				})
+			},
+		)
+
 		it("should only save provider relevant settings", async () => {
 			mockSecrets.get.mockResolvedValue(
 				JSON.stringify({

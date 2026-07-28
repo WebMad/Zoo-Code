@@ -29,6 +29,8 @@ import { t } from "../../i18n"
 
 export type OpenAiCodexModel = ReturnType<OpenAiCodexHandler["getModel"]>
 
+type OpenAiCodexRequestServiceTier = "priority"
+
 /**
  * OpenAI Codex base URL for API requests
  * Per the implementation guide: requests are routed to chatgpt.com/backend-api/codex
@@ -36,6 +38,10 @@ export type OpenAiCodexModel = ReturnType<OpenAiCodexHandler["getModel"]>
 const CODEX_API_BASE_URL = "https://chatgpt.com/backend-api/codex"
 const LUNA_MODEL_ID = "gpt-5.6-luna"
 const LUNA_CODEX_VERSION = "0.144.0"
+
+function getOpenAiCodexServiceTier(options: ApiHandlerOptions): OpenAiCodexRequestServiceTier | undefined {
+	return options.openAiCodexServiceTier === "priority" ? "priority" : undefined
+}
 
 function stripInputImageDetail(value: any): any {
 	if (Array.isArray(value)) {
@@ -365,6 +371,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 			model: string
 			input: Array<{ role: "user" | "assistant"; content: any[] } | { type: string; content: string }>
 			stream: boolean
+			service_tier?: OpenAiCodexRequestServiceTier
 			reasoning?: { effort?: ReasoningEffortExtended; summary?: "auto" }
 			temperature?: number
 			store?: boolean
@@ -383,12 +390,14 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 
 		// Per the implementation guide: Codex backend may reject max_output_tokens
 		// and prompt_cache_retention, so we omit them
+		const serviceTier = getOpenAiCodexServiceTier(this.options)
 		const body: ResponsesRequestBody = {
 			model: model.id,
 			input: formattedInput,
 			stream: true,
 			store: false,
 			instructions: systemPrompt,
+			...(serviceTier ? { service_tier: serviceTier } : {}),
 			// Only include encrypted reasoning content when reasoning effort is set
 			...(reasoningEffort ? { include: ["reasoning.encrypted_content"] } : {}),
 			...(reasoningEffort
@@ -1261,6 +1270,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 			}
 
 			const reasoningEffort = this.getReasoningEffort(model)
+			const serviceTier = getOpenAiCodexServiceTier(this.options)
 
 			const baseRequestBody: any = {
 				model: model.id,
@@ -1272,6 +1282,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 				],
 				stream: false,
 				store: false,
+				...(serviceTier ? { service_tier: serviceTier } : {}),
 				...(reasoningEffort ? { include: ["reasoning.encrypted_content"] } : {}),
 			}
 

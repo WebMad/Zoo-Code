@@ -277,7 +277,8 @@ const geminiCliSchema = apiModelIdProviderModelSchema.extend({
 })
 
 const openAiCodexSchema = apiModelIdProviderModelSchema.extend({
-	// No additional settings needed - uses OAuth authentication
+	// Codex "Fast" mode maps to the Responses API priority service tier.
+	openAiCodexServiceTier: z.enum(["default", "priority"]).optional(),
 })
 
 const openAiNativeSchema = apiModelIdProviderModelSchema.extend({

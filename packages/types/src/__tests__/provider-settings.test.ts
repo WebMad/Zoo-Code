@@ -1,4 +1,43 @@
-import { getApiProtocol } from "../provider-settings.js"
+import {
+	getApiProtocol,
+	PROVIDER_SETTINGS_KEYS,
+	providerSettingsSchema,
+	providerSettingsSchemaDiscriminated,
+} from "../provider-settings.js"
+
+describe("OpenAI Codex provider settings", () => {
+	it("preserves the Fast preference in general and provider-specific schemas", () => {
+		const settings = {
+			apiProvider: "openai-codex" as const,
+			apiModelId: "gpt-5.6-sol",
+			openAiCodexServiceTier: "priority" as const,
+		}
+
+		expect(providerSettingsSchema.parse(settings)).toEqual(settings)
+		expect(providerSettingsSchemaDiscriminated.parse(settings)).toEqual(settings)
+		expect(PROVIDER_SETTINGS_KEYS).toContain("openAiCodexServiceTier")
+	})
+
+	it.each([undefined, "default"])("accepts %s as the Standard preference", (openAiCodexServiceTier) => {
+		const standardSettings = {
+			apiProvider: "openai-codex" as const,
+			apiModelId: "gpt-5.6-sol",
+			...(openAiCodexServiceTier ? { openAiCodexServiceTier } : {}),
+		}
+
+		expect(providerSettingsSchemaDiscriminated.parse(standardSettings)).toEqual(standardSettings)
+	})
+
+	it("rejects unsupported service tiers", () => {
+		expect(
+			providerSettingsSchemaDiscriminated.safeParse({
+				apiProvider: "openai-codex",
+				apiModelId: "gpt-5.6-sol",
+				openAiCodexServiceTier: "flex",
+			}).success,
+		).toBe(false)
+	})
+})
 
 describe("getApiProtocol", () => {
 	describe("Anthropic-style providers", () => {
