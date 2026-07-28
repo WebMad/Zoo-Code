@@ -94,4 +94,16 @@ describe("ModelInfoView service tier pricing", () => {
 
 		expect(screen.queryByText("Service tier pricing")).not.toBeInTheDocument()
 	})
+
+	it("does not show the tier pricing table when model info has no tiers", () => {
+		render(
+			<ModelInfoView
+				{...defaultProps}
+				apiProvider={providerIdentifiers.openaiNative}
+				modelInfo={baseModelInfo}
+			/>,
+		)
+
+		expect(screen.queryByText("Service tier pricing")).not.toBeInTheDocument()
+	})
 })

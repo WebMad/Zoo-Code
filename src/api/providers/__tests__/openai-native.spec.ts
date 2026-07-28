@@ -501,6 +501,28 @@ describe("OpenAiNativeHandler", () => {
 			expect(result.totalCost).toBeCloseTo(0.22, 6)
 		})
 
+		it("should retain standard pricing when no service tier is selected", () => {
+			const model = handler.getModel()
+			const applyServiceTierPricing = Reflect.get(handler, "applyServiceTierPricing")
+
+			const result = Reflect.apply(applyServiceTierPricing, handler, [model.info])
+
+			expect(result).toBe(model.info)
+		})
+
+		it("should retain standard pricing when the resolved service tier has no pricing entry", () => {
+			const model = handler.getModel()
+			const infoWithoutTiers = { ...model.info, tiers: undefined }
+			const applyServiceTierPricing = Reflect.get(handler, "applyServiceTierPricing")
+
+			const result = Reflect.apply(applyServiceTierPricing, handler, [
+				infoWithoutTiers,
+				OpenAiServiceTier.Priority,
+			])
+
+			expect(result).toBe(infoWithoutTiers)
+		})
+
 		it("should return GPT-5.3 Chat model info when selected", () => {
 			const chatHandler = new OpenAiNativeHandler({
 				...mockOptions,
