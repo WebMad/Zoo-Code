@@ -122,6 +122,29 @@ describe("OpenAiNativeHandler", () => {
 	})
 
 	describe("createMessage", () => {
+		it.each([OpenAiServiceTier.Default, OpenAiServiceTier.Priority])(
+			"should include the selected %s service tier",
+			async (serviceTier) => {
+				mockResponsesCreate.mockResolvedValue({
+					async *[Symbol.asyncIterator]() {},
+				})
+				handler = new OpenAiNativeHandler({
+					...mockOptions,
+					apiModelId: "gpt-5.6-sol",
+					openAiNativeServiceTier: serviceTier,
+				})
+
+				for await (const chunk of handler.createMessage(systemPrompt, messages)) {
+					void chunk
+				}
+
+				expect(mockResponsesCreate).toHaveBeenCalledWith(
+					expect.objectContaining({ service_tier: serviceTier }),
+					expect.any(Object),
+				)
+			},
+		)
+
 		it("should handle streaming responses via Responses API", async () => {
 			// Mock fetch for Responses API fallback
 			const mockFetch = vitest.fn().mockResolvedValue({
@@ -220,6 +243,28 @@ describe("OpenAiNativeHandler", () => {
 				}),
 			)
 		})
+
+		it.each([OpenAiServiceTier.Default, OpenAiServiceTier.Priority])(
+			"should include the selected %s service tier",
+			async (serviceTier) => {
+				mockResponsesCreate.mockResolvedValue({ output: [] })
+				handler = new OpenAiNativeHandler({
+					...mockOptions,
+					apiModelId: "gpt-5.6-sol",
+					openAiNativeServiceTier: serviceTier,
+				})
+
+				await handler.completePrompt("Test prompt")
+
+				expect(mockResponsesCreate).toHaveBeenCalledWith(
+					expect.objectContaining({
+						stream: false,
+						service_tier: serviceTier,
+					}),
+					expect.any(Object),
+				)
+			},
+		)
 
 		it("should handle SDK errors in completePrompt", async () => {
 			// Mock SDK to throw an error
@@ -336,6 +381,27 @@ describe("OpenAiNativeHandler", () => {
 					outputPrice: 0.625,
 				}),
 			])
+		})
+
+		it("should retain standard pricing for an explicitly selected default tier", () => {
+			const defaultTierHandler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-5.4",
+				openAiNativeServiceTier: OpenAiServiceTier.Default,
+			})
+			const model = defaultTierHandler.getModel()
+			const normalizeUsage = Reflect.get(defaultTierHandler, "normalizeUsage")
+
+			const result = Reflect.apply(normalizeUsage, defaultTierHandler, [
+				{
+					input_tokens: 100_000,
+					output_tokens: 1_000,
+					cache_read_input_tokens: 20_000,
+				},
+				model,
+			]) as { totalCost: number }
+
+			expect(result.totalCost).toBeCloseTo(0.22, 6)
 		})
 
 		it("should return GPT-5.3 Chat model info when selected", () => {
