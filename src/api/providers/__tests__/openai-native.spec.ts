@@ -266,6 +266,31 @@ describe("OpenAiNativeHandler", () => {
 			},
 		)
 
+		it("should omit the service tier when none is configured", async () => {
+			mockResponsesCreate.mockResolvedValue({ output: [] })
+
+			await handler.completePrompt("Test prompt")
+
+			const [request] = mockResponsesCreate.mock.calls[0]
+			expect(request.stream).toBe(false)
+			expect(request).not.toHaveProperty(SERVICE_TIER_KEY)
+		})
+
+		it("should omit a configured service tier that the model does not support", async () => {
+			mockResponsesCreate.mockResolvedValue({ output: [] })
+			handler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-5.6-luna",
+				openAiNativeServiceTier: OpenAiServiceTier.Priority,
+			})
+
+			await handler.completePrompt("Test prompt")
+
+			const [request] = mockResponsesCreate.mock.calls[0]
+			expect(request.stream).toBe(false)
+			expect(request).not.toHaveProperty(SERVICE_TIER_KEY)
+		})
+
 		it("should handle SDK errors in completePrompt", async () => {
 			// Mock SDK to throw an error
 			mockResponsesCreate.mockRejectedValue(new Error("API Error"))
