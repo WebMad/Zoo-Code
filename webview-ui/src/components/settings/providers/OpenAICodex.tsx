@@ -1,6 +1,11 @@
 import React from "react"
 
-import { OpenAiServiceTier, type ProviderSettings, openAiCodexDefaultModelId, openAiCodexModels } from "@roo-code/types"
+import {
+	OpenAiCodexServiceTier,
+	type ProviderSettings,
+	openAiCodexDefaultModelId,
+	openAiCodexModels,
+} from "@roo-code/types"
 
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import {
@@ -85,7 +90,7 @@ export const OpenAICodex: React.FC<OpenAICodexProps> = ({
 					</StandardTooltip>
 				</div>
 				<Select
-					value={apiConfiguration[OPEN_AI_CODEX_SERVICE_TIER_KEY] ?? OpenAiServiceTier.Default}
+					value={apiConfiguration[OPEN_AI_CODEX_SERVICE_TIER_KEY] ?? OpenAiCodexServiceTier.Default}
 					onValueChange={(value) =>
 						setApiConfigurationField(
 							OPEN_AI_CODEX_SERVICE_TIER_KEY,
@@ -96,10 +101,10 @@ export const OpenAICodex: React.FC<OpenAICodexProps> = ({
 						<SelectValue placeholder={t("settings:common.select")} />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value={OpenAiServiceTier.Default}>
+						<SelectItem value={OpenAiCodexServiceTier.Default}>
 							{t("settings:openAiCodexSpeed.standard")}
 						</SelectItem>
-						<SelectItem value={OpenAiServiceTier.Priority}>
+						<SelectItem value={OpenAiCodexServiceTier.Priority}>
 							{t("settings:openAiCodexSpeed.fast")}
 						</SelectItem>
 					</SelectContent>

@@ -2,7 +2,7 @@ import { z } from "zod"
 
 import {
 	modelInfoSchema,
-	OpenAiServiceTier,
+	OpenAiCodexServiceTier,
 	reasoningEffortSettingSchema,
 	verbosityLevelsSchema,
 	serviceTierSchema,
@@ -284,7 +284,7 @@ const geminiCliSchema = apiModelIdProviderModelSchema.extend({
 
 const openAiCodexSchema = apiModelIdProviderModelSchema.extend({
 	// Codex "Fast" mode maps to the Responses API priority service tier.
-	openAiCodexServiceTier: z.enum([OpenAiServiceTier.Default, OpenAiServiceTier.Priority]).optional(),
+	openAiCodexServiceTier: z.enum([OpenAiCodexServiceTier.Default, OpenAiCodexServiceTier.Priority]).optional(),
 })
 
 const openAiNativeSchema = apiModelIdProviderModelSchema.extend({

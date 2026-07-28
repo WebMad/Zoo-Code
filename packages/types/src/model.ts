@@ -55,7 +55,7 @@ export const verbosityLevelsSchema = z.enum(verbosityLevels)
 export type VerbosityLevel = z.infer<typeof verbosityLevelsSchema>
 
 /**
- * Service tiers (OpenAI Responses API)
+ * Service tiers for the public OpenAI Responses API.
  */
 export enum OpenAiServiceTier {
 	Default = "default",
@@ -66,6 +66,14 @@ export enum OpenAiServiceTier {
 export const serviceTiers = Object.values(OpenAiServiceTier) as [`${OpenAiServiceTier}`, ...`${OpenAiServiceTier}`[]]
 export const serviceTierSchema = z.enum(serviceTiers)
 export type ServiceTier = `${OpenAiServiceTier}`
+
+/**
+ * Service tiers for Codex requests authenticated through a ChatGPT subscription.
+ */
+export enum OpenAiCodexServiceTier {
+	Default = "default",
+	Priority = "priority",
+}
 
 /**
  * ModelParameter

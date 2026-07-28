@@ -2,7 +2,7 @@
 
 import { ExtensionContext } from "vscode"
 
-import { OpenAiServiceTier, providerIdentifiers, type ProviderSettings } from "@roo-code/types"
+import { OpenAiCodexServiceTier, providerIdentifiers, type ProviderSettings } from "@roo-code/types"
 
 import { ProviderSettingsManager, ProviderProfiles, SyncCloudProfilesResult } from "../ProviderSettingsManager"
 
@@ -451,7 +451,7 @@ describe("ProviderSettingsManager", () => {
 			expect(storedConfig).toEqual(expectedConfig)
 		})
 
-		it.each([OpenAiServiceTier.Default, OpenAiServiceTier.Priority] as const)(
+		it.each([OpenAiCodexServiceTier.Default, OpenAiCodexServiceTier.Priority] as const)(
 			"should persist the OpenAI Codex %s speed preference",
 			async (openAiCodexServiceTier) => {
 				mockSecrets.get.mockResolvedValue(

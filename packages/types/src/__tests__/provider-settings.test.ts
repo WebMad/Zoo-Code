@@ -4,7 +4,7 @@ import {
 	providerSettingsSchema,
 	providerSettingsSchemaDiscriminated,
 } from "../provider-settings.js"
-import { OpenAiServiceTier } from "../model.js"
+import { OpenAiCodexServiceTier, OpenAiServiceTier } from "../model.js"
 import { providerIdentifiers } from "../provider-identifiers.js"
 
 describe("OpenAI Codex provider settings", () => {
@@ -12,7 +12,7 @@ describe("OpenAI Codex provider settings", () => {
 		const settings = {
 			apiProvider: providerIdentifiers.openaiCodex,
 			apiModelId: "gpt-5.6-sol",
-			openAiCodexServiceTier: OpenAiServiceTier.Priority,
+			openAiCodexServiceTier: OpenAiCodexServiceTier.Priority,
 		}
 
 		expect(providerSettingsSchema.parse(settings)).toEqual(settings)
@@ -20,7 +20,7 @@ describe("OpenAI Codex provider settings", () => {
 		expect(PROVIDER_SETTINGS_KEYS).toContain("openAiCodexServiceTier")
 	})
 
-	it.each([undefined, OpenAiServiceTier.Default])(
+	it.each([undefined, OpenAiCodexServiceTier.Default])(
 		"accepts %s as the Standard preference",
 		(openAiCodexServiceTier) => {
 			const standardSettings = {
