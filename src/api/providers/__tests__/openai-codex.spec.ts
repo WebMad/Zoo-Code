@@ -9,6 +9,7 @@ vitest.mock("@roo-code/telemetry", () => ({
 }))
 
 import { Anthropic } from "@anthropic-ai/sdk"
+import { OpenAiServiceTier } from "@roo-code/types"
 import { OpenAiCodexHandler, transformLunaResponsesLiteBody } from "../openai-codex"
 import { openAiCodexOAuthManager } from "../../../integrations/openai-codex/oauth"
 
@@ -84,7 +85,7 @@ describe("OpenAiCodexHandler.createMessage", () => {
 	it("sends the priority service tier in streaming SDK requests when Fast is selected", async () => {
 		const handler = new OpenAiCodexHandler({
 			apiModelId: "gpt-5.6-sol",
-			openAiCodexServiceTier: "priority",
+			openAiCodexServiceTier: OpenAiServiceTier.Priority,
 		})
 		vitest.spyOn(openAiCodexOAuthManager, "getAccessToken").mockResolvedValue("test-token")
 		vitest.spyOn(openAiCodexOAuthManager, "getAccountId").mockResolvedValue("acct_test")
@@ -94,12 +95,15 @@ describe("OpenAiCodexHandler.createMessage", () => {
 		await drainStream(handler.createMessage("System prompt", []))
 
 		const [body] = mockCreate.mock.calls[0]
-		expect(body).toMatchObject({ stream: true, service_tier: "priority" })
+		expect(body).toMatchObject({ stream: true, service_tier: OpenAiServiceTier.Priority })
 	})
 
 	it.each([
 		["an absent preference", {}],
-		["an explicit Standard preference from an older profile", { openAiCodexServiceTier: "default" }],
+		[
+			"an explicit Standard preference from an older profile",
+			{ openAiCodexServiceTier: OpenAiServiceTier.Default },
+		],
 	])("omits the service tier in streaming SDK requests for %s", async (_description, serviceTierOptions) => {
 		const handler = new OpenAiCodexHandler({
 			apiModelId: "gpt-5.6-sol",
@@ -118,7 +122,7 @@ describe("OpenAiCodexHandler.createMessage", () => {
 	it("preserves the priority service tier in the manual streaming fallback", async () => {
 		const handler = new OpenAiCodexHandler({
 			apiModelId: "gpt-5.6-sol",
-			openAiCodexServiceTier: "priority",
+			openAiCodexServiceTier: OpenAiServiceTier.Priority,
 		})
 		vitest.spyOn(openAiCodexOAuthManager, "getAccessToken").mockResolvedValue("test-token")
 		vitest.spyOn(openAiCodexOAuthManager, "getAccountId").mockResolvedValue("acct_test")
@@ -144,7 +148,7 @@ describe("OpenAiCodexHandler.createMessage", () => {
 
 		expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toMatchObject({
 			stream: true,
-			service_tier: "priority",
+			service_tier: OpenAiServiceTier.Priority,
 		})
 	})
 
@@ -254,13 +258,13 @@ describe("OpenAiCodexHandler.completePrompt service tier", () => {
 		vitest.unstubAllGlobals()
 	})
 
-	it.each([
-		["Fast", "priority", "priority"],
+	it.each<[string, OpenAiServiceTier.Priority | undefined, OpenAiServiceTier.Priority | undefined]>([
+		["Fast", OpenAiServiceTier.Priority, OpenAiServiceTier.Priority],
 		["Standard", undefined, undefined],
 	])("uses the %s preference in non-streaming requests", async (_mode, configuredTier, expectedTier) => {
 		const handler = new OpenAiCodexHandler({
 			apiModelId: "gpt-5.6-sol",
-			...(configuredTier ? { openAiCodexServiceTier: configuredTier as "priority" } : {}),
+			...(configuredTier ? { openAiCodexServiceTier: configuredTier } : {}),
 		})
 		vitest.spyOn(openAiCodexOAuthManager, "getAccessToken").mockResolvedValue("test-token")
 		vitest.spyOn(openAiCodexOAuthManager, "getAccountId").mockResolvedValue("acct_test")

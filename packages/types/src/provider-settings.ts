@@ -1,6 +1,12 @@
 import { z } from "zod"
 
-import { modelInfoSchema, reasoningEffortSettingSchema, verbosityLevelsSchema, serviceTierSchema } from "./model.js"
+import {
+	modelInfoSchema,
+	OpenAiServiceTier,
+	reasoningEffortSettingSchema,
+	verbosityLevelsSchema,
+	serviceTierSchema,
+} from "./model.js"
 import { codebaseIndexProviderSchema } from "./codebase-index.js"
 import {
 	providerIdentifiers,
@@ -278,7 +284,7 @@ const geminiCliSchema = apiModelIdProviderModelSchema.extend({
 
 const openAiCodexSchema = apiModelIdProviderModelSchema.extend({
 	// Codex "Fast" mode maps to the Responses API priority service tier.
-	openAiCodexServiceTier: z.enum(["default", "priority"]).optional(),
+	openAiCodexServiceTier: z.enum([OpenAiServiceTier.Default, OpenAiServiceTier.Priority]).optional(),
 })
 
 const openAiNativeSchema = apiModelIdProviderModelSchema.extend({

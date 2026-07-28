@@ -57,9 +57,15 @@ export type VerbosityLevel = z.infer<typeof verbosityLevelsSchema>
 /**
  * Service tiers (OpenAI Responses API)
  */
-export const serviceTiers = ["default", "flex", "priority"] as const
+export enum OpenAiServiceTier {
+	Default = "default",
+	Flex = "flex",
+	Priority = "priority",
+}
+
+export const serviceTiers = Object.values(OpenAiServiceTier) as [`${OpenAiServiceTier}`, ...`${OpenAiServiceTier}`[]]
 export const serviceTierSchema = z.enum(serviceTiers)
-export type ServiceTier = z.infer<typeof serviceTierSchema>
+export type ServiceTier = `${OpenAiServiceTier}`
 
 /**
  * ModelParameter

@@ -13,7 +13,7 @@ vitest.mock("@roo-code/telemetry", () => ({
 import { Anthropic } from "@anthropic-ai/sdk"
 import OpenAI from "openai"
 
-import { ApiProviderError } from "@roo-code/types"
+import { ApiProviderError, OpenAiServiceTier } from "@roo-code/types"
 
 import { OpenAiNativeHandler } from "../openai-native"
 import { ApiHandlerOptions } from "../../../shared/api"
@@ -332,7 +332,7 @@ describe("OpenAiNativeHandler", () => {
 			expect(modelInfo.info.longContextPricing).toBeUndefined()
 			expect(modelInfo.info.tiers).toEqual([
 				expect.objectContaining({
-					name: "flex",
+					name: OpenAiServiceTier.Flex,
 					outputPrice: 0.625,
 				}),
 			])

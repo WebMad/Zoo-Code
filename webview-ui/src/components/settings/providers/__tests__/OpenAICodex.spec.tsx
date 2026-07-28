@@ -1,6 +1,6 @@
 import React from "react"
 
-import type { ProviderSettings } from "@roo-code/types"
+import { OpenAiServiceTier, providerIdentifiers, type ProviderSettings } from "@roo-code/types"
 
 import { fireEvent, render, screen } from "@/utils/test-utils"
 
@@ -54,9 +54,9 @@ describe("OpenAICodex speed selector", () => {
 	}
 
 	it("defaults to Standard and clearly explains the Fast quota trade-off", () => {
-		const { selector } = renderSelector({ apiProvider: "openai-codex" })
+		const { selector } = renderSelector({ apiProvider: providerIdentifiers.openaiCodex })
 
-		expect(selector).toHaveValue("default")
+		expect(selector).toHaveValue(OpenAiServiceTier.Default)
 		expect(screen.getByRole("option", { name: "Standard" })).toBeInTheDocument()
 		expect(screen.getByRole("option", { name: "Fast (1.5x speed, increased usage)" })).toBeInTheDocument()
 		expect(
@@ -68,16 +68,16 @@ describe("OpenAICodex speed selector", () => {
 
 	it("selects Fast from a saved preference and persists changes through the settings callback", () => {
 		const { selector, setApiConfigurationField } = renderSelector({
-			apiProvider: "openai-codex",
-			openAiCodexServiceTier: "priority",
+			apiProvider: providerIdentifiers.openaiCodex,
+			openAiCodexServiceTier: OpenAiServiceTier.Priority,
 		})
 
-		expect(selector).toHaveValue("priority")
+		expect(selector).toHaveValue(OpenAiServiceTier.Priority)
 
-		fireEvent.change(selector, { target: { value: "default" } })
-		expect(setApiConfigurationField).toHaveBeenLastCalledWith("openAiCodexServiceTier", "default")
+		fireEvent.change(selector, { target: { value: OpenAiServiceTier.Default } })
+		expect(setApiConfigurationField).toHaveBeenLastCalledWith("openAiCodexServiceTier", OpenAiServiceTier.Default)
 
-		fireEvent.change(selector, { target: { value: "priority" } })
-		expect(setApiConfigurationField).toHaveBeenLastCalledWith("openAiCodexServiceTier", "priority")
+		fireEvent.change(selector, { target: { value: OpenAiServiceTier.Priority } })
+		expect(setApiConfigurationField).toHaveBeenLastCalledWith("openAiCodexServiceTier", OpenAiServiceTier.Priority)
 	})
 })

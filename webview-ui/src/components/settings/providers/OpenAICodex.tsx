@@ -1,6 +1,6 @@
 import React from "react"
 
-import { type ProviderSettings, openAiCodexDefaultModelId, openAiCodexModels } from "@roo-code/types"
+import { OpenAiServiceTier, type ProviderSettings, openAiCodexDefaultModelId, openAiCodexModels } from "@roo-code/types"
 
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import {
@@ -16,6 +16,8 @@ import { vscode } from "@src/utils/vscode"
 
 import { ModelPicker } from "../ModelPicker"
 import { OpenAICodexRateLimitDashboard } from "./OpenAICodexRateLimitDashboard"
+
+const OPEN_AI_CODEX_SERVICE_TIER_KEY = "openAiCodexServiceTier"
 
 interface OpenAICodexProps {
 	apiConfiguration: ProviderSettings
@@ -83,19 +85,23 @@ export const OpenAICodex: React.FC<OpenAICodexProps> = ({
 					</StandardTooltip>
 				</div>
 				<Select
-					value={apiConfiguration.openAiCodexServiceTier ?? "default"}
+					value={apiConfiguration[OPEN_AI_CODEX_SERVICE_TIER_KEY] ?? OpenAiServiceTier.Default}
 					onValueChange={(value) =>
 						setApiConfigurationField(
-							"openAiCodexServiceTier",
-							value as ProviderSettings["openAiCodexServiceTier"],
+							OPEN_AI_CODEX_SERVICE_TIER_KEY,
+							value as ProviderSettings[typeof OPEN_AI_CODEX_SERVICE_TIER_KEY],
 						)
 					}>
 					<SelectTrigger className="w-full">
 						<SelectValue placeholder={t("settings:common.select")} />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="default">{t("settings:openAiCodexSpeed.standard")}</SelectItem>
-						<SelectItem value="priority">{t("settings:openAiCodexSpeed.fast")}</SelectItem>
+						<SelectItem value={OpenAiServiceTier.Default}>
+							{t("settings:openAiCodexSpeed.standard")}
+						</SelectItem>
+						<SelectItem value={OpenAiServiceTier.Priority}>
+							{t("settings:openAiCodexSpeed.fast")}
+						</SelectItem>
 					</SelectContent>
 				</Select>
 			</div>

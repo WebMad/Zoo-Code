@@ -5,6 +5,7 @@ import OpenAI from "openai"
 
 import {
 	type ModelInfo,
+	OpenAiServiceTier,
 	openAiCodexDefaultModelId,
 	OpenAiCodexModelId,
 	openAiCodexModels,
@@ -29,7 +30,7 @@ import { t } from "../../i18n"
 
 export type OpenAiCodexModel = ReturnType<OpenAiCodexHandler["getModel"]>
 
-type OpenAiCodexRequestServiceTier = "priority"
+type OpenAiCodexRequestServiceTier = OpenAiServiceTier.Priority
 
 /**
  * OpenAI Codex base URL for API requests
@@ -39,9 +40,8 @@ const CODEX_API_BASE_URL = "https://chatgpt.com/backend-api/codex"
 const LUNA_MODEL_ID = "gpt-5.6-luna"
 const LUNA_CODEX_VERSION = "0.144.0"
 
-function getOpenAiCodexServiceTier(options: ApiHandlerOptions): OpenAiCodexRequestServiceTier | undefined {
-	return options.openAiCodexServiceTier === "priority" ? "priority" : undefined
-}
+const getOpenAiCodexServiceTier = (options: ApiHandlerOptions): OpenAiCodexRequestServiceTier | undefined =>
+	options.openAiCodexServiceTier === OpenAiServiceTier.Priority ? OpenAiServiceTier.Priority : undefined
 
 function stripInputImageDetail(value: any): any {
 	if (Array.isArray(value)) {

@@ -2,7 +2,7 @@
 
 import { ExtensionContext } from "vscode"
 
-import type { ProviderSettings } from "@roo-code/types"
+import { OpenAiServiceTier, providerIdentifiers, type ProviderSettings } from "@roo-code/types"
 
 import { ProviderSettingsManager, ProviderProfiles, SyncCloudProfilesResult } from "../ProviderSettingsManager"
 
@@ -451,7 +451,7 @@ describe("ProviderSettingsManager", () => {
 			expect(storedConfig).toEqual(expectedConfig)
 		})
 
-		it.each(["default", "priority"] as const)(
+		it.each([OpenAiServiceTier.Default, OpenAiServiceTier.Priority] as const)(
 			"should persist the OpenAI Codex %s speed preference",
 			async (openAiCodexServiceTier) => {
 				mockSecrets.get.mockResolvedValue(
@@ -463,14 +463,14 @@ describe("ProviderSettingsManager", () => {
 				)
 
 				await providerSettingsManager.saveConfig("codex", {
-					apiProvider: "openai-codex",
+					apiProvider: providerIdentifiers.openaiCodex,
 					apiModelId: "gpt-5.6-sol",
 					openAiCodexServiceTier,
 				})
 
 				const storedProfiles = JSON.parse(mockSecrets.store.mock.calls.at(-1)?.[1])
 				expect(storedProfiles.apiConfigs.codex).toMatchObject({
-					apiProvider: "openai-codex",
+					apiProvider: providerIdentifiers.openaiCodex,
 					apiModelId: "gpt-5.6-sol",
 					openAiCodexServiceTier,
 				})

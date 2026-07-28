@@ -4,13 +4,15 @@ import {
 	providerSettingsSchema,
 	providerSettingsSchemaDiscriminated,
 } from "../provider-settings.js"
+import { OpenAiServiceTier } from "../model.js"
+import { providerIdentifiers } from "../provider-identifiers.js"
 
 describe("OpenAI Codex provider settings", () => {
 	it("preserves the Fast preference in general and provider-specific schemas", () => {
 		const settings = {
-			apiProvider: "openai-codex" as const,
+			apiProvider: providerIdentifiers.openaiCodex,
 			apiModelId: "gpt-5.6-sol",
-			openAiCodexServiceTier: "priority" as const,
+			openAiCodexServiceTier: OpenAiServiceTier.Priority,
 		}
 
 		expect(providerSettingsSchema.parse(settings)).toEqual(settings)
@@ -18,22 +20,25 @@ describe("OpenAI Codex provider settings", () => {
 		expect(PROVIDER_SETTINGS_KEYS).toContain("openAiCodexServiceTier")
 	})
 
-	it.each([undefined, "default"])("accepts %s as the Standard preference", (openAiCodexServiceTier) => {
-		const standardSettings = {
-			apiProvider: "openai-codex" as const,
-			apiModelId: "gpt-5.6-sol",
-			...(openAiCodexServiceTier ? { openAiCodexServiceTier } : {}),
-		}
+	it.each([undefined, OpenAiServiceTier.Default])(
+		"accepts %s as the Standard preference",
+		(openAiCodexServiceTier) => {
+			const standardSettings = {
+				apiProvider: providerIdentifiers.openaiCodex,
+				apiModelId: "gpt-5.6-sol",
+				...(openAiCodexServiceTier ? { openAiCodexServiceTier } : {}),
+			}
 
-		expect(providerSettingsSchemaDiscriminated.parse(standardSettings)).toEqual(standardSettings)
-	})
+			expect(providerSettingsSchemaDiscriminated.parse(standardSettings)).toEqual(standardSettings)
+		},
+	)
 
 	it("rejects unsupported service tiers", () => {
 		expect(
 			providerSettingsSchemaDiscriminated.safeParse({
-				apiProvider: "openai-codex",
+				apiProvider: providerIdentifiers.openaiCodex,
 				apiModelId: "gpt-5.6-sol",
-				openAiCodexServiceTier: "flex",
+				openAiCodexServiceTier: OpenAiServiceTier.Flex,
 			}).success,
 		).toBe(false)
 	})

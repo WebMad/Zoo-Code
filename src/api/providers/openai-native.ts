@@ -13,6 +13,7 @@ import {
 	type ReasoningEffort,
 	type VerbosityLevel,
 	type ReasoningEffortExtended,
+	OpenAiServiceTier,
 	type ServiceTier,
 	ApiProviderError,
 } from "@roo-code/types"
@@ -369,7 +370,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			...(model.maxTokens ? { max_output_tokens: model.maxTokens } : {}),
 			// Include tier when selected and supported by the model, or when explicitly "default"
 			...(requestedTier &&
-				(requestedTier === "default" || allowedTierNames.has(requestedTier)) && {
+				(requestedTier === OpenAiServiceTier.Default || allowedTierNames.has(requestedTier)) && {
 					service_tier: requestedTier,
 				}),
 			// Enable extended prompt cache retention for models that support it.
@@ -1418,7 +1419,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 	 * If no tier or no overrides exist, the original ModelInfo is returned.
 	 */
 	private applyServiceTierPricing(info: ModelInfo, tier?: ServiceTier): ModelInfo {
-		if (!tier || tier === "default") return info
+		if (!tier || tier === OpenAiServiceTier.Default) return info
 
 		// Find the tier with matching name in the tiers array
 		const tierInfo = info.tiers?.find((t) => t.name === tier)
@@ -1512,7 +1513,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			// Include service tier if selected and supported
 			const requestedTier = (this.options.openAiNativeServiceTier as ServiceTier | undefined) || undefined
 			const allowedTierNames = new Set(model.info.tiers?.map((t) => t.name).filter(Boolean) || [])
-			if (requestedTier && (requestedTier === "default" || allowedTierNames.has(requestedTier))) {
+			if (requestedTier && (requestedTier === OpenAiServiceTier.Default || allowedTierNames.has(requestedTier))) {
 				requestBody.service_tier = requestedTier
 			}
 
