@@ -207,7 +207,7 @@ function validateProviderAgainstOrganizationSettings(
 }
 
 function getModelIdForProvider(apiConfiguration: ProviderSettings, provider: ProviderName): string | undefined {
-	if (provider === "vscode-lm") {
+	if (provider === providerIdentifiers.vscodeLm) {
 		return apiConfiguration.vsCodeLmModelSelector?.id
 	}
 
@@ -318,7 +318,7 @@ export function validateApiConfigurationExcludingModelErrors(
 	_routerModels?: RouterModels, // Keeping this for compatibility with the old function.
 	organizationAllowList?: OrganizationAllowList,
 ): string | undefined {
-	if (apiConfiguration.apiProvider !== "zoo-gateway") {
+	if (apiConfiguration.apiProvider !== providerIdentifiers.zooGateway) {
 		const keysAndIdsPresentErrorMessage = validateModelsAndKeysProvided(apiConfiguration)
 
 		if (keysAndIdsPresentErrorMessage) {

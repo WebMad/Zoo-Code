@@ -455,6 +455,8 @@ describe("useSelectedModel", () => {
 
 			expect(result.current.id).toBe("claude-opus-4-6")
 			expect(result.current.info?.contextWindow).toBe(1_000_000)
+			expect(result.current.info?.inputPrice).toBe(10.0)
+			expect(result.current.info?.outputPrice).toBe(37.5)
 		})
 
 		it.each(["anthropic", "gemini-cli", "fake-ai"] as const)(
