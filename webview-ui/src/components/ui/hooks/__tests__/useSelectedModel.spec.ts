@@ -23,6 +23,7 @@ import {
 	vscodeLlmDefaultModelId,
 	moonshotDefaultModelId,
 	moonshotModels,
+	kimiCodeDefaultModelInfo,
 	providerIdentifiers,
 } from "@roo-code/types"
 
@@ -1077,6 +1078,50 @@ describe("useSelectedModel", () => {
 			expect(result.current.id).toBe("zai-org/GLM-5.1")
 			expect(result.current.info).toEqual(friendliModels["zai-org/GLM-5.1"])
 		})
+	})
+
+	describe("Kimi Code provider", () => {
+		it("should resolve the configured model from router models", () => {
+			const modelInfo: ModelInfo = {
+				...kimiCodeDefaultModelInfo,
+				description: "Configured Kimi Code model",
+			}
+
+			mockUseRouterModels.mockReturnValue({
+				data: { "kimi-code": { "kimi-for-coding": modelInfo } },
+				isLoading: false,
+				isError: false,
+			} as any)
+
+			const apiConfiguration: ProviderSettings = {
+				apiProvider: providerIdentifiers.kimiCode,
+				apiModelId: "kimi-for-coding",
+			}
+
+			const wrapper = createWrapper()
+			const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper })
+
+			expect(result.current.provider).toBe(providerIdentifiers.kimiCode)
+			expect(result.current.id).toBe("kimi-for-coding")
+			expect(result.current.info).toEqual(modelInfo)
+		})
+	})
+
+	it("should reject providers unsupported by model selection", () => {
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined)
+		const preventExpectedError = (event: ErrorEvent) => event.preventDefault()
+		window.addEventListener("error", preventExpectedError)
+		const apiConfiguration = {
+			apiProvider: "unsupported-provider",
+		} as unknown as ProviderSettings
+
+		const wrapper = createWrapper()
+
+		expect(() => renderHook(() => useSelectedModel(apiConfiguration), { wrapper })).toThrow(
+			"Unsupported provider: unsupported-provider",
+		)
+		window.removeEventListener("error", preventExpectedError)
+		consoleError.mockRestore()
 	})
 
 	describe("moonshot provider", () => {
