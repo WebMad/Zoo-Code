@@ -13,7 +13,7 @@ vitest.mock("@roo-code/telemetry", () => ({
 import { Anthropic } from "@anthropic-ai/sdk"
 import OpenAI from "openai"
 
-import { ApiProviderError, OpenAiServiceTier, SERVICE_TIER_KEY } from "@roo-code/types"
+import { ApiProviderError, OpenAiServiceTier, SERVICE_TIER_KEY, serviceTiers } from "@roo-code/types"
 
 import { OpenAiNativeHandler } from "../openai-native"
 import { ApiHandlerOptions } from "../../../shared/api"
@@ -21,6 +21,24 @@ import { Package } from "../../../shared/package"
 
 // Mock OpenAI client - now everything uses Responses API
 const mockResponsesCreate = vitest.fn()
+
+const serviceTierPricingCases = [
+	{
+		requestedTier: OpenAiServiceTier.Default,
+		resolvedTier: OpenAiServiceTier.Priority,
+		expectedCost: 0.00275,
+	},
+	{
+		requestedTier: OpenAiServiceTier.Priority,
+		resolvedTier: OpenAiServiceTier.Flex,
+		expectedCost: 0.00055,
+	},
+	{
+		requestedTier: OpenAiServiceTier.Flex,
+		resolvedTier: OpenAiServiceTier.Default,
+		expectedCost: 0.0011,
+	},
+]
 
 vitest.mock("openai", () => {
 	return {
@@ -122,142 +140,155 @@ describe("OpenAiNativeHandler", () => {
 	})
 
 	describe("createMessage", () => {
-		it.each([OpenAiServiceTier.Default, OpenAiServiceTier.Flex, OpenAiServiceTier.Priority])(
-			"should include the selected %s service tier",
-			async (serviceTier) => {
+		it.each(serviceTiers)("should include the selected %s service tier", async (serviceTier) => {
+			mockResponsesCreate.mockResolvedValue({
+				async *[Symbol.asyncIterator]() {},
+			})
+			handler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-5.6-sol",
+				openAiNativeServiceTier: serviceTier,
+			})
+
+			for await (const chunk of handler.createMessage(systemPrompt, messages)) {
+				void chunk
+			}
+
+			expect(mockResponsesCreate).toHaveBeenCalledWith(
+				expect.objectContaining({ [SERVICE_TIER_KEY]: serviceTier }),
+				expect.any(Object),
+			)
+		})
+
+		it.each(serviceTierPricingCases)(
+			"prices SDK stream usage using resolved $resolvedTier tier instead of requested $requestedTier tier",
+			async ({ requestedTier, resolvedTier, expectedCost }) => {
 				mockResponsesCreate.mockResolvedValue({
-					async *[Symbol.asyncIterator]() {},
+					async *[Symbol.asyncIterator]() {
+						yield {
+							type: "response.done",
+							response: {
+								[SERVICE_TIER_KEY]: resolvedTier,
+								usage: { input_tokens: 100, output_tokens: 20 },
+							},
+						}
+					},
 				})
 				handler = new OpenAiNativeHandler({
 					...mockOptions,
 					apiModelId: "gpt-5.6-sol",
-					openAiNativeServiceTier: serviceTier,
+					openAiNativeServiceTier: requestedTier,
 				})
 
+				const chunks = []
 				for await (const chunk of handler.createMessage(systemPrompt, messages)) {
-					void chunk
+					chunks.push(chunk)
 				}
 
-				expect(mockResponsesCreate).toHaveBeenCalledWith(
-					expect.objectContaining({ [SERVICE_TIER_KEY]: serviceTier }),
-					expect.any(Object),
+				expect(chunks).toContainEqual(
+					expect.objectContaining({
+						type: "usage",
+						inputTokens: 100,
+						outputTokens: 20,
+						totalCost: expectedCost,
+					}),
 				)
 			},
 		)
 
-		it("prices SDK stream usage using the service tier resolved by OpenAI", async () => {
-			mockResponsesCreate.mockResolvedValue({
-				async *[Symbol.asyncIterator]() {
-					yield {
-						type: "response.done",
-						response: {
-							[SERVICE_TIER_KEY]: OpenAiServiceTier.Priority,
-							usage: { input_tokens: 100, output_tokens: 20 },
+		it.each(serviceTierPricingCases)(
+			"requests $requestedTier but prices manual SSE fallback usage using OpenAI's resolved $resolvedTier tier",
+			async ({ requestedTier, resolvedTier, expectedCost }) => {
+				mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+				const mockFetch = vitest.fn().mockResolvedValue({
+					ok: true,
+					body: new ReadableStream({
+						start(controller) {
+							controller.enqueue(
+								new TextEncoder().encode(
+									`data: ${JSON.stringify({
+										type: "response.done",
+										response: {
+											[SERVICE_TIER_KEY]: resolvedTier,
+											usage: { input_tokens: 100, output_tokens: 20 },
+										},
+									})}\n\n`,
+								),
+							)
+							controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
+							controller.close()
 						},
-					}
-				},
-			})
-			handler = new OpenAiNativeHandler({
-				...mockOptions,
-				apiModelId: "gpt-5.6-sol",
-				openAiNativeServiceTier: OpenAiServiceTier.Default,
-			})
+					}),
+				})
+				global.fetch = mockFetch as typeof fetch
+				handler = new OpenAiNativeHandler({
+					...mockOptions,
+					apiModelId: "gpt-5.6-sol",
+					openAiNativeServiceTier: requestedTier,
+				})
 
-			const chunks = []
-			for await (const chunk of handler.createMessage(systemPrompt, messages)) {
-				chunks.push(chunk)
-			}
+				const chunks = []
+				for await (const chunk of handler.createMessage(systemPrompt, messages)) {
+					chunks.push(chunk)
+				}
 
-			expect(chunks).toContainEqual(
-				expect.objectContaining({
-					type: "usage",
-					inputTokens: 100,
-					outputTokens: 20,
-					totalCost: 0.00275,
-				}),
-			)
-		})
+				const [, request] = mockFetch.mock.calls[0]
+				expect(JSON.parse(request.body)).toMatchObject({ [SERVICE_TIER_KEY]: requestedTier })
+				expect(chunks).toContainEqual(expect.objectContaining({ type: "usage", totalCost: expectedCost }))
+			},
+		)
 
-		it("requests the configured tier but prices manual SSE fallback usage using OpenAI's resolved tier", async () => {
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
-			const mockFetch = vitest.fn().mockResolvedValue({
-				ok: true,
-				body: new ReadableStream({
-					start(controller) {
-						controller.enqueue(
-							new TextEncoder().encode(
-								`data: ${JSON.stringify({
-									type: "response.done",
-									response: {
-										[SERVICE_TIER_KEY]: OpenAiServiceTier.Priority,
+		it.each(serviceTierPricingCases)(
+			"captures resolved $resolvedTier tier from a manual SSE completion event when $requestedTier was requested",
+			async ({ requestedTier, resolvedTier, expectedCost }) => {
+				mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+				const mockFetch = vitest.fn().mockResolvedValue({
+					ok: true,
+					body: new ReadableStream({
+						start(controller) {
+							controller.enqueue(
+								new TextEncoder().encode(
+									`data: ${JSON.stringify({
+										type: "response.completed",
+										response: { [SERVICE_TIER_KEY]: resolvedTier },
+									})}\n\n`,
+								),
+							)
+							controller.enqueue(
+								new TextEncoder().encode(
+									`data: ${JSON.stringify({
+										type: "response.usage",
 										usage: { input_tokens: 100, output_tokens: 20 },
-									},
-								})}\n\n`,
-							),
-						)
-						controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
-						controller.close()
-					},
-				}),
-			})
-			global.fetch = mockFetch as typeof fetch
-			handler = new OpenAiNativeHandler({
-				...mockOptions,
-				apiModelId: "gpt-5.6-sol",
-				openAiNativeServiceTier: OpenAiServiceTier.Default,
-			})
+									})}\n\n`,
+								),
+							)
+							controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
+							controller.close()
+						},
+					}),
+				})
+				global.fetch = mockFetch as typeof fetch
+				handler = new OpenAiNativeHandler({
+					...mockOptions,
+					apiModelId: "gpt-5.6-sol",
+					openAiNativeServiceTier: requestedTier,
+				})
 
-			const chunks = []
-			for await (const chunk of handler.createMessage(systemPrompt, messages)) {
-				chunks.push(chunk)
-			}
+				const chunks = []
+				for await (const chunk of handler.createMessage(systemPrompt, messages)) {
+					chunks.push(chunk)
+				}
 
-			const [, request] = mockFetch.mock.calls[0]
-			expect(JSON.parse(request.body)).toMatchObject({ [SERVICE_TIER_KEY]: OpenAiServiceTier.Default })
-			expect(chunks).toContainEqual(expect.objectContaining({ type: "usage", totalCost: 0.00275 }))
-		})
-
-		it("captures the resolved tier from a manual SSE completion event", async () => {
-			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
-			const mockFetch = vitest.fn().mockResolvedValue({
-				ok: true,
-				body: new ReadableStream({
-					start(controller) {
-						controller.enqueue(
-							new TextEncoder().encode(
-								`data: ${JSON.stringify({
-									type: "response.completed",
-									response: { [SERVICE_TIER_KEY]: OpenAiServiceTier.Priority },
-								})}\n\n`,
-							),
-						)
-						controller.enqueue(
-							new TextEncoder().encode(
-								`data: ${JSON.stringify({
-									type: "response.usage",
-									usage: { input_tokens: 100, output_tokens: 20 },
-								})}\n\n`,
-							),
-						)
-						controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
-						controller.close()
-					},
-				}),
-			})
-			global.fetch = mockFetch as typeof fetch
-			handler = new OpenAiNativeHandler({
-				...mockOptions,
-				apiModelId: "gpt-5.6-sol",
-				openAiNativeServiceTier: OpenAiServiceTier.Default,
-			})
-
-			const chunks = []
-			for await (const chunk of handler.createMessage(systemPrompt, messages)) {
-				chunks.push(chunk)
-			}
-
-			expect(chunks).toContainEqual(expect.objectContaining({ type: "usage", totalCost: 0.00275 }))
-		})
+				expect(chunks).toContainEqual(
+					expect.objectContaining({
+						type: "usage",
+						inputTokens: 100,
+						outputTokens: 20,
+						totalCost: expectedCost,
+					}),
+				)
+			},
+		)
 
 		it("should handle streaming responses via Responses API", async () => {
 			// Mock fetch for Responses API fallback
@@ -358,27 +389,24 @@ describe("OpenAiNativeHandler", () => {
 			)
 		})
 
-		it.each([OpenAiServiceTier.Default, OpenAiServiceTier.Flex, OpenAiServiceTier.Priority])(
-			"should include the selected %s service tier",
-			async (serviceTier) => {
-				mockResponsesCreate.mockResolvedValue({ output: [] })
-				handler = new OpenAiNativeHandler({
-					...mockOptions,
-					apiModelId: "gpt-5.6-sol",
-					openAiNativeServiceTier: serviceTier,
-				})
+		it.each(serviceTiers)("should include the selected %s service tier", async (serviceTier) => {
+			mockResponsesCreate.mockResolvedValue({ output: [] })
+			handler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-5.6-sol",
+				openAiNativeServiceTier: serviceTier,
+			})
 
-				await handler.completePrompt("Test prompt")
+			await handler.completePrompt("Test prompt")
 
-				expect(mockResponsesCreate).toHaveBeenCalledWith(
-					expect.objectContaining({
-						stream: false,
-						[SERVICE_TIER_KEY]: serviceTier,
-					}),
-					expect.any(Object),
-				)
-			},
-		)
+			expect(mockResponsesCreate).toHaveBeenCalledWith(
+				expect.objectContaining({
+					stream: false,
+					[SERVICE_TIER_KEY]: serviceTier,
+				}),
+				expect.any(Object),
+			)
+		})
 
 		it("should omit the service tier when none is configured", async () => {
 			mockResponsesCreate.mockResolvedValue({ output: [] })
