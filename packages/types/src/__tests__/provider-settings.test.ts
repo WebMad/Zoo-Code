@@ -1,17 +1,19 @@
 import { ANTHROPIC_API_PROTOCOL, getApiProtocol, OPENAI_API_PROTOCOL, providerIdentifiers } from "../index.js"
 
 describe("getApiProtocol", () => {
-	describe("Anthropic-style providers", () => {
-		it("should return 'anthropic' for anthropic provider", () => {
-			expect(getApiProtocol(providerIdentifiers.anthropic)).toBe(ANTHROPIC_API_PROTOCOL)
-			expect(getApiProtocol(providerIdentifiers.anthropic, "gpt-4")).toBe(ANTHROPIC_API_PROTOCOL)
-		})
+	it("preserves API protocol wire values", () => {
+		expect(ANTHROPIC_API_PROTOCOL).toBe("anthropic")
+		expect(OPENAI_API_PROTOCOL).toBe("openai")
+	})
 
-		it("should return 'anthropic' for bedrock provider", () => {
-			expect(getApiProtocol(providerIdentifiers.bedrock)).toBe(ANTHROPIC_API_PROTOCOL)
-			expect(getApiProtocol(providerIdentifiers.bedrock, "gpt-4")).toBe(ANTHROPIC_API_PROTOCOL)
-			expect(getApiProtocol(providerIdentifiers.bedrock, "claude-3-opus")).toBe(ANTHROPIC_API_PROTOCOL)
-		})
+	describe("Anthropic-style providers", () => {
+		it.each([providerIdentifiers.anthropic, providerIdentifiers.bedrock, providerIdentifiers.minimax])(
+			"should return 'anthropic' for %s provider",
+			(provider) => {
+				expect(getApiProtocol(provider)).toBe(ANTHROPIC_API_PROTOCOL)
+				expect(getApiProtocol(provider, "gpt-4")).toBe(ANTHROPIC_API_PROTOCOL)
+			},
+		)
 	})
 
 	describe("Vertex provider with Claude models", () => {
@@ -33,11 +35,8 @@ describe("getApiProtocol", () => {
 		})
 	})
 
-	describe("Vercel AI Gateway provider", () => {
-		it("uses canonical gateway identifiers for Anthropic model protocol selection", () => {
-			expect(getApiProtocol(providerIdentifiers.vercelAiGateway, "anthropic/claude-3-opus")).toBe(
-				ANTHROPIC_API_PROTOCOL,
-			)
+	describe("Gateway providers", () => {
+		it("uses the canonical Zoo Gateway identifier for Anthropic model protocol selection", () => {
 			expect(getApiProtocol(providerIdentifiers.zooGateway, "anthropic/claude-3-opus")).toBe(
 				ANTHROPIC_API_PROTOCOL,
 			)

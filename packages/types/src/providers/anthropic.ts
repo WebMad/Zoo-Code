@@ -6,8 +6,6 @@ import type { ModelInfo } from "../model.js"
 export type AnthropicModelId = keyof typeof anthropicModels
 export const anthropicDefaultModelId: AnthropicModelId = "claude-sonnet-4-5"
 export const ANTHROPIC_API_PROTOCOL = "anthropic"
-export const ANTHROPIC_MODEL_ID_PREFIX = "anthropic/"
-export const CLAUDE_MODEL_ID_FRAGMENT = "claude"
 
 export const anthropicModels = {
 	"claude-sonnet-4-6": {

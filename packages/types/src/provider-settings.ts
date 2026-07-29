@@ -30,8 +30,6 @@ import {
 	mimoModels,
 	isOpencodeGoAnthropicFormatModel,
 	ANTHROPIC_API_PROTOCOL,
-	ANTHROPIC_MODEL_ID_PREFIX,
-	CLAUDE_MODEL_ID_FRAGMENT,
 	OPENAI_API_PROTOCOL,
 } from "./providers/index.js"
 
@@ -595,6 +593,9 @@ const ANTHROPIC_MODEL_GATEWAY_PROVIDERS: ProviderName[] = [
 	providerIdentifiers.vercelAiGateway,
 	providerIdentifiers.zooGateway,
 ]
+
+const ANTHROPIC_MODEL_ID_PREFIX = "anthropic/"
+const CLAUDE_MODEL_ID_FRAGMENT = "claude"
 
 export const getApiProtocol = (provider: ProviderName | undefined, modelId?: string): "anthropic" | "openai" => {
 	if (provider && ANTHROPIC_STYLE_PROVIDERS.includes(provider)) {
