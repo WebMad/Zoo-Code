@@ -336,8 +336,8 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 		}
 
 		// Validate requested tier against model support; if not supported, omit.
-		const requestedTier = (this.options.openAiNativeServiceTier as ServiceTier | undefined) || undefined
 		const allowedTierNames = new Set(model.info.tiers?.map((t) => t.name).filter(Boolean) || [])
+		const serviceTier = this.getAllowedServiceTier(this.options.openAiNativeServiceTier, allowedTierNames)
 
 		// Decide whether to enable extended prompt cache retention for this request
 		const promptCacheRetention = this.getPromptCacheRetention(model)
@@ -370,10 +370,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			// Use the per-request reserved output computed by Roo (params.maxTokens from getModelParams).
 			...(model.maxTokens ? { max_output_tokens: model.maxTokens } : {}),
 			// Include tier when selected and supported by the model, or when explicitly "default"
-			...(requestedTier &&
-				(requestedTier === OpenAiServiceTier.Default || allowedTierNames.has(requestedTier)) && {
-					[SERVICE_TIER_KEY]: requestedTier,
-				}),
+			...(serviceTier && { [SERVICE_TIER_KEY]: serviceTier }),
 			// Enable extended prompt cache retention for models that support it.
 			// This uses the OpenAI Responses API `prompt_cache_retention` parameter.
 			...(promptCacheRetention ? { prompt_cache_retention: promptCacheRetention } : {}),
@@ -1431,6 +1428,15 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 		}
 	}
 
+	private getAllowedServiceTier(
+		requestedTier: ServiceTier | undefined,
+		allowedTierNames: ReadonlySet<string | undefined>,
+	): ServiceTier | undefined {
+		return requestedTier === OpenAiServiceTier.Default || (requestedTier && allowedTierNames.has(requestedTier))
+			? requestedTier
+			: undefined
+	}
+
 	// Removed isResponsesApiModel method as ALL models now use the Responses API
 
 	override getModel() {
@@ -1508,10 +1514,10 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			}
 
 			// Include service tier if selected and supported
-			const requestedTier = (this.options.openAiNativeServiceTier as ServiceTier | undefined) || undefined
 			const allowedTierNames = new Set(model.info.tiers?.map((t) => t.name).filter(Boolean) || [])
-			if (requestedTier && (requestedTier === OpenAiServiceTier.Default || allowedTierNames.has(requestedTier))) {
-				requestBody[SERVICE_TIER_KEY] = requestedTier
+			const serviceTier = this.getAllowedServiceTier(this.options.openAiNativeServiceTier, allowedTierNames)
+			if (serviceTier) {
+				requestBody[SERVICE_TIER_KEY] = serviceTier
 			}
 
 			// Add reasoning if supported

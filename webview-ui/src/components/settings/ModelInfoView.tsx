@@ -17,6 +17,26 @@ type ModelInfoViewProps = {
 	hidePricing?: boolean
 }
 
+type TierPricingRowProps = {
+	tier: OpenAiServiceTier
+	label: string
+	modelInfo?: ModelInfo
+}
+
+const TierPricingRow = ({ tier, label, modelInfo }: TierPricingRowProps) => {
+	const tierInfo = modelInfo?.tiers?.find(({ name }) => name === tier)
+	const fmt = (price?: number) => (typeof price === "number" ? formatPrice(price) : "—")
+
+	return (
+		<tr className="border-t border-vscode-dropdown-border/60">
+			<td className="px-3 py-1.5">{label}</td>
+			<td className="px-3 py-1.5 text-right">{fmt(tierInfo?.inputPrice ?? modelInfo?.inputPrice)}</td>
+			<td className="px-3 py-1.5 text-right">{fmt(tierInfo?.outputPrice ?? modelInfo?.outputPrice)}</td>
+			<td className="px-3 py-1.5 text-right">{fmt(tierInfo?.cacheReadsPrice ?? modelInfo?.cacheReadsPrice)}</td>
+		</tr>
+	)
+}
+
 export const ModelInfoView = ({
 	apiProvider,
 	selectedModelId,
@@ -33,7 +53,7 @@ export const ModelInfoView = ({
 			?.filter((t) => t.name === OpenAiServiceTier.Flex || t.name === OpenAiServiceTier.Priority)
 			?.map((t) => t.name) ?? []
 	const shouldShowTierPricingTable = apiProvider === providerIdentifiers.openaiNative && allowedTierNames.length > 0
-	const fmt = (n?: number) => (typeof n === "number" ? `${formatPrice(n)}` : "—")
+	const fmt = (n?: number) => (typeof n === "number" ? formatPrice(n) : "—")
 
 	const baseInfoItems = [
 		typeof modelInfo?.contextWindow === "number" && modelInfo.contextWindow > 0 && (
@@ -147,50 +167,18 @@ export const ModelInfoView = ({
 									<td className="px-3 py-1.5 text-right">{fmt(modelInfo?.cacheReadsPrice)}</td>
 								</tr>
 								{allowedTierNames.includes(OpenAiServiceTier.Flex) && (
-									<tr className="border-t border-vscode-dropdown-border/60">
-										<td className="px-3 py-1.5">{t("settings:serviceTier.flex")}</td>
-										<td className="px-3 py-1.5 text-right">
-											{fmt(
-												modelInfo?.tiers?.find((t) => t.name === OpenAiServiceTier.Flex)
-													?.inputPrice ?? modelInfo?.inputPrice,
-											)}
-										</td>
-										<td className="px-3 py-1.5 text-right">
-											{fmt(
-												modelInfo?.tiers?.find((t) => t.name === OpenAiServiceTier.Flex)
-													?.outputPrice ?? modelInfo?.outputPrice,
-											)}
-										</td>
-										<td className="px-3 py-1.5 text-right">
-											{fmt(
-												modelInfo?.tiers?.find((t) => t.name === OpenAiServiceTier.Flex)
-													?.cacheReadsPrice ?? modelInfo?.cacheReadsPrice,
-											)}
-										</td>
-									</tr>
+									<TierPricingRow
+										tier={OpenAiServiceTier.Flex}
+										label={t("settings:serviceTier.flex")}
+										modelInfo={modelInfo}
+									/>
 								)}
 								{allowedTierNames.includes(OpenAiServiceTier.Priority) && (
-									<tr className="border-t border-vscode-dropdown-border/60">
-										<td className="px-3 py-1.5">{t("settings:serviceTier.priority")}</td>
-										<td className="px-3 py-1.5 text-right">
-											{fmt(
-												modelInfo?.tiers?.find((t) => t.name === OpenAiServiceTier.Priority)
-													?.inputPrice ?? modelInfo?.inputPrice,
-											)}
-										</td>
-										<td className="px-3 py-1.5 text-right">
-											{fmt(
-												modelInfo?.tiers?.find((t) => t.name === OpenAiServiceTier.Priority)
-													?.outputPrice ?? modelInfo?.outputPrice,
-											)}
-										</td>
-										<td className="px-3 py-1.5 text-right">
-											{fmt(
-												modelInfo?.tiers?.find((t) => t.name === OpenAiServiceTier.Priority)
-													?.cacheReadsPrice ?? modelInfo?.cacheReadsPrice,
-											)}
-										</td>
-									</tr>
+									<TierPricingRow
+										tier={OpenAiServiceTier.Priority}
+										label={t("settings:serviceTier.priority")}
+										modelInfo={modelInfo}
+									/>
 								)}
 							</tbody>
 						</table>
