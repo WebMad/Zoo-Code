@@ -60,15 +60,15 @@ export const SERVICE_TIER_KEY = "service_tier"
 /**
  * Service tiers for the public OpenAI Responses API.
  */
-export enum OpenAiServiceTier {
-	Default = "default",
-	Flex = "flex",
-	Priority = "priority",
-}
+export const OpenAiServiceTier = {
+	Default: "default",
+	Flex: "flex",
+	Priority: "priority",
+} as const
 
-export const serviceTiers = Object.values(OpenAiServiceTier) as [`${OpenAiServiceTier}`, ...`${OpenAiServiceTier}`[]]
+export const serviceTiers = [OpenAiServiceTier.Default, OpenAiServiceTier.Flex, OpenAiServiceTier.Priority] as const
 export const serviceTierSchema = z.enum(serviceTiers)
-export type ServiceTier = `${OpenAiServiceTier}`
+export type ServiceTier = z.infer<typeof serviceTierSchema>
 
 /**
  * ModelParameter

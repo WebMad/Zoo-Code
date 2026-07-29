@@ -196,6 +196,60 @@ describe("OpenAiNativeHandler", () => {
 			},
 		)
 
+		it.each([
+			{
+				name: "an explicitly selected default tier",
+				modelId: "gpt-5.4" as const,
+				requestedTier: OpenAiServiceTier.Default,
+				resolvedTier: undefined,
+				expectedCost: 0.22,
+			},
+			{
+				name: "no selected service tier",
+				modelId: "gpt-5.4" as const,
+				requestedTier: undefined,
+				resolvedTier: undefined,
+				expectedCost: 0.22,
+			},
+			{
+				name: "a resolved service tier without a pricing entry",
+				modelId: "gpt-5.6-luna" as const,
+				requestedTier: OpenAiServiceTier.Default,
+				resolvedTier: OpenAiServiceTier.Priority,
+				expectedCost: 0.088,
+			},
+		])("retains standard pricing for $name", async ({ modelId, requestedTier, resolvedTier, expectedCost }) => {
+			mockResponsesCreate.mockResolvedValue({
+				async *[Symbol.asyncIterator]() {
+					yield {
+						type: "response.done",
+						response: {
+							...(resolvedTier ? { [SERVICE_TIER_KEY]: resolvedTier } : {}),
+							usage: {
+								input_tokens: 100_000,
+								output_tokens: 1_000,
+								cache_read_input_tokens: 20_000,
+							},
+						},
+					}
+				},
+			})
+			handler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: modelId,
+				openAiNativeServiceTier: requestedTier,
+			})
+
+			const chunks = []
+			for await (const chunk of handler.createMessage(systemPrompt, messages)) {
+				chunks.push(chunk)
+			}
+
+			const usageChunk = chunks.find((chunk) => chunk.type === "usage")
+			expect(usageChunk).toBeDefined()
+			expect(usageChunk?.totalCost).toBeCloseTo(expectedCost, 6)
+		})
+
 		it.each(serviceTierPricingCases)(
 			"requests $requestedTier but prices manual SSE fallback usage using OpenAI's resolved $resolvedTier tier",
 			async ({ requestedTier, resolvedTier, expectedCost }) => {
@@ -548,49 +602,6 @@ describe("OpenAiNativeHandler", () => {
 					outputPrice: 0.625,
 				}),
 			])
-		})
-
-		it("should retain standard pricing for an explicitly selected default tier", () => {
-			const defaultTierHandler = new OpenAiNativeHandler({
-				...mockOptions,
-				apiModelId: "gpt-5.4",
-				openAiNativeServiceTier: OpenAiServiceTier.Default,
-			})
-			const model = defaultTierHandler.getModel()
-			const normalizeUsage = Reflect.get(defaultTierHandler, "normalizeUsage")
-
-			const result = Reflect.apply(normalizeUsage, defaultTierHandler, [
-				{
-					input_tokens: 100_000,
-					output_tokens: 1_000,
-					cache_read_input_tokens: 20_000,
-				},
-				model,
-			]) as { totalCost: number }
-
-			expect(result.totalCost).toBeCloseTo(0.22, 6)
-		})
-
-		it("should retain standard pricing when no service tier is selected", () => {
-			const model = handler.getModel()
-			const applyServiceTierPricing = Reflect.get(handler, "applyServiceTierPricing")
-
-			const result = Reflect.apply(applyServiceTierPricing, handler, [model.info])
-
-			expect(result).toBe(model.info)
-		})
-
-		it("should retain standard pricing when the resolved service tier has no pricing entry", () => {
-			const model = handler.getModel()
-			const infoWithoutTiers = { ...model.info, tiers: undefined }
-			const applyServiceTierPricing = Reflect.get(handler, "applyServiceTierPricing")
-
-			const result = Reflect.apply(applyServiceTierPricing, handler, [
-				infoWithoutTiers,
-				OpenAiServiceTier.Priority,
-			])
-
-			expect(result).toBe(infoWithoutTiers)
 		})
 
 		it("should return GPT-5.3 Chat model info when selected", () => {

@@ -336,8 +336,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 		}
 
 		// Validate requested tier against model support; if not supported, omit.
-		const allowedTierNames = new Set(model.info.tiers?.map((t) => t.name).filter(Boolean) || [])
-		const serviceTier = this.getAllowedServiceTier(this.options.openAiNativeServiceTier, allowedTierNames)
+		const serviceTier = this.getAllowedServiceTier(model)
 
 		// Decide whether to enable extended prompt cache retention for this request
 		const promptCacheRetention = this.getPromptCacheRetention(model)
@@ -1428,10 +1427,10 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 		}
 	}
 
-	private getAllowedServiceTier(
-		requestedTier: ServiceTier | undefined,
-		allowedTierNames: ReadonlySet<string | undefined>,
-	): ServiceTier | undefined {
+	private getAllowedServiceTier(model: OpenAiNativeModel): ServiceTier | undefined {
+		const requestedTier = this.options.openAiNativeServiceTier
+		const allowedTierNames = new Set(model.info.tiers?.map(({ name }) => name).filter(Boolean))
+
 		return requestedTier === OpenAiServiceTier.Default || (requestedTier && allowedTierNames.has(requestedTier))
 			? requestedTier
 			: undefined
@@ -1514,8 +1513,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			}
 
 			// Include service tier if selected and supported
-			const allowedTierNames = new Set(model.info.tiers?.map((t) => t.name).filter(Boolean) || [])
-			const serviceTier = this.getAllowedServiceTier(this.options.openAiNativeServiceTier, allowedTierNames)
+			const serviceTier = this.getAllowedServiceTier(model)
 			if (serviceTier) {
 				requestBody[SERVICE_TIER_KEY] = serviceTier
 			}

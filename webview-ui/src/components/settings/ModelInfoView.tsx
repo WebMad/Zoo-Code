@@ -1,6 +1,6 @@
 import { VSCodeLink } from "@vscode/webview-ui-toolkit/react"
 
-import { OpenAiServiceTier, providerIdentifiers, type ModelInfo } from "@roo-code/types"
+import { OpenAiServiceTier, providerIdentifiers, type ModelInfo, type ServiceTier } from "@roo-code/types"
 
 import { formatPrice } from "@src/utils/formatPrice"
 import { cn } from "@src/lib/utils"
@@ -18,7 +18,7 @@ type ModelInfoViewProps = {
 }
 
 type TierPricingRowProps = {
-	tier: OpenAiServiceTier
+	tier: ServiceTier
 	label: string
 	modelInfo?: ModelInfo
 }
