@@ -122,7 +122,7 @@ describe("OpenAiNativeHandler", () => {
 	})
 
 	describe("createMessage", () => {
-		it.each([OpenAiServiceTier.Default, OpenAiServiceTier.Priority])(
+		it.each([OpenAiServiceTier.Default, OpenAiServiceTier.Flex, OpenAiServiceTier.Priority])(
 			"should include the selected %s service tier",
 			async (serviceTier) => {
 				mockResponsesCreate.mockResolvedValue({
@@ -358,7 +358,7 @@ describe("OpenAiNativeHandler", () => {
 			)
 		})
 
-		it.each([OpenAiServiceTier.Default, OpenAiServiceTier.Priority])(
+		it.each([OpenAiServiceTier.Default, OpenAiServiceTier.Flex, OpenAiServiceTier.Priority])(
 			"should include the selected %s service tier",
 			async (serviceTier) => {
 				mockResponsesCreate.mockResolvedValue({ output: [] })
