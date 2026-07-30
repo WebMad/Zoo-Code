@@ -261,7 +261,7 @@ describe("OpenAiCodexHandler.completePrompt service tier", () => {
 		vitest.unstubAllGlobals()
 	})
 
-	it.each<[string, OpenAiCodexServiceTier.Priority | undefined, OpenAiCodexServiceTier.Priority | undefined]>([
+	it.each<[string, OpenAiCodexServiceTier | undefined, typeof OpenAiCodexServiceTier.Priority | undefined]>([
 		["Fast", OpenAiCodexServiceTier.Priority, OpenAiCodexServiceTier.Priority],
 		["Standard", undefined, undefined],
 	])("uses the %s preference in non-streaming requests", async (_mode, configuredTier, expectedTier) => {

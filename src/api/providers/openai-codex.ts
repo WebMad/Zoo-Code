@@ -32,7 +32,7 @@ import { t } from "../../i18n"
 
 export type OpenAiCodexModel = ReturnType<OpenAiCodexHandler["getModel"]>
 
-type OpenAiCodexRequestServiceTier = OpenAiCodexServiceTier.Priority
+type OpenAiCodexRequestServiceTier = typeof OpenAiCodexServiceTier.Priority
 
 /**
  * OpenAI Codex base URL for API requests
