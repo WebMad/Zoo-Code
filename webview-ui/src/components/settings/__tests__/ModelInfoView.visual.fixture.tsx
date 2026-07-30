@@ -1,8 +1,9 @@
 import React from "react"
 
-import { OpenAiServiceTier, providerIdentifiers, type ModelInfo } from "@roo-code/types"
+import { OpenAiServiceTier, type ModelInfo } from "@roo-code/types/model"
+import { providerIdentifiers } from "@roo-code/types/provider-identifiers"
 
-import { TranslationContext } from "../../../i18n/TranslationContext"
+import { TranslationContext } from "@src/i18n/TranslationContext"
 import { ModelInfoView } from "../ModelInfoView"
 
 const modelInfo: ModelInfo = {

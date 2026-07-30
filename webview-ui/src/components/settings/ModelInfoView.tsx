@@ -1,6 +1,7 @@
 import { VSCodeLink } from "@vscode/webview-ui-toolkit/react"
 
-import { OpenAiServiceTier, providerIdentifiers, type ModelInfo, type ServiceTier } from "@roo-code/types"
+import { OpenAiServiceTier, type ModelInfo, type ServiceTier } from "@roo-code/types/model"
+import { providerIdentifiers } from "@roo-code/types/provider-identifiers"
 
 import { formatPrice } from "@src/utils/formatPrice"
 import { cn } from "@src/lib/utils"
