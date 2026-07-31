@@ -26,9 +26,11 @@ for (const theme of themes) {
 	test(`renders both OpenAI Codex speeds in the VS Code ${theme.name} theme`, async ({ mount }) => {
 		const component = await mount(<OpenAICodexFixture />)
 		const selectors = component.getByTestId("openai-codex-service-tier")
+		const comboboxes = component.getByRole("combobox", { name: "Speed" })
 		const selector = selectors.first()
 
 		await expect(selectors).toHaveCount(2)
+		await expect(comboboxes).toHaveCount(2)
 		await selector.evaluate((element, { bodyClass, themeId }) => {
 			const { document } = element.ownerDocument.defaultView!
 
