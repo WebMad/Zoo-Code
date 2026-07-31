@@ -1,3 +1,4 @@
+/* v8 ignore file -- Playwright component fixture is covered by the visual test. */
 import React from "react"
 
 import { TranslationContext } from "@src/i18n/TranslationContext"
