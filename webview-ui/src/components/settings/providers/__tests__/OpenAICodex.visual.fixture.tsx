@@ -1,10 +1,7 @@
 /* v8 ignore file -- Playwright component fixture is covered by the visual test. */
 import React from "react"
 
-import {
-	OpenAiCodexServiceTier,
-	type OpenAiCodexServiceTier as OpenAiCodexServiceTierValue,
-} from "@roo-code/types/model"
+import { OpenAiCodexServiceTier } from "@roo-code/types/model"
 
 import { TranslationContext } from "@src/i18n/TranslationContext"
 import { TooltipProvider } from "@src/components/ui/tooltip"
@@ -19,19 +16,16 @@ const translations: Record<string, string> = {
 	"settings:openAiCodexSpeed.fast": "Fast (1.5x speed, increased usage)",
 }
 
-interface OpenAICodexFixtureProps {
-	value?: OpenAiCodexServiceTierValue
-}
-
-export const OpenAICodexFixture = ({ value = OpenAiCodexServiceTier.Default }: OpenAICodexFixtureProps) => (
+export const OpenAICodexFixture = () => (
 	<TranslationContext.Provider
 		value={{
 			t: (key) => translations[key] ?? key,
 			i18n: null as unknown as typeof import("../../../../i18n/setup").default,
 		}}>
 		<TooltipProvider>
-			<div className="w-[480px] bg-vscode-editor-background p-4 text-vscode-foreground">
-				<OpenAICodexSpeedSelector value={value} onValueChange={() => {}} />
+			<div className="flex w-[480px] flex-col gap-4 bg-vscode-editor-background p-4 text-vscode-foreground">
+				<OpenAICodexSpeedSelector value={OpenAiCodexServiceTier.Default} onValueChange={() => {}} />
+				<OpenAICodexSpeedSelector value={OpenAiCodexServiceTier.Priority} onValueChange={() => {}} />
 			</div>
 		</TooltipProvider>
 	</TranslationContext.Provider>
