@@ -1,6 +1,11 @@
 /* v8 ignore file -- Playwright component fixture is covered by the visual test. */
 import React from "react"
 
+import {
+	OpenAiCodexServiceTier,
+	type OpenAiCodexServiceTier as OpenAiCodexServiceTierValue,
+} from "@roo-code/types/model"
+
 import { TranslationContext } from "@src/i18n/TranslationContext"
 import { TooltipProvider } from "@src/components/ui/tooltip"
 import { OpenAICodexSpeedSelector } from "../OpenAICodexSpeedSelector"
@@ -14,7 +19,11 @@ const translations: Record<string, string> = {
 	"settings:openAiCodexSpeed.fast": "Fast (1.5x speed, increased usage)",
 }
 
-export const OpenAICodexFixture = () => (
+interface OpenAICodexFixtureProps {
+	value?: OpenAiCodexServiceTierValue
+}
+
+export const OpenAICodexFixture = ({ value = OpenAiCodexServiceTier.Default }: OpenAICodexFixtureProps) => (
 	<TranslationContext.Provider
 		value={{
 			t: (key) => translations[key] ?? key,
@@ -22,7 +31,7 @@ export const OpenAICodexFixture = () => (
 		}}>
 		<TooltipProvider>
 			<div className="w-[480px] bg-vscode-editor-background p-4 text-vscode-foreground">
-				<OpenAICodexSpeedSelector onValueChange={() => {}} />
+				<OpenAICodexSpeedSelector value={value} onValueChange={() => {}} />
 			</div>
 		</TooltipProvider>
 	</TranslationContext.Provider>

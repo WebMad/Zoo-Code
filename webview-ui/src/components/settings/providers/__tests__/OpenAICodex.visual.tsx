@@ -1,16 +1,77 @@
 import React from "react"
 
+import { OpenAiCodexServiceTier } from "@roo-code/types/model"
+
 import { expect, test } from "../../../../../playwright/coverage-fixture"
 import { OpenAICodexFixture } from "./OpenAICodex.visual.fixture"
 
-test("renders the OpenAI Codex speed selector in the VS Code dark theme", async ({ mount }) => {
-	const component = await mount(<OpenAICodexFixture />)
-	const selector = component.getByTestId("openai-codex-service-tier")
+const themes = [
+	{
+		name: "dark",
+		bodyClass: "vscode-dark",
+		themeId: "Default Dark Modern",
+		editorBackground: "#1e1e1e",
+		dropdownBackground: "#3c3c3c",
+		triggerBackground: "rgb(60, 60, 60)",
+	},
+	{
+		name: "light",
+		bodyClass: "vscode-light",
+		themeId: "Default Light Modern",
+		editorBackground: "#ffffff",
+		dropdownBackground: "#ffffff",
+		triggerBackground: "rgb(255, 255, 255)",
+	},
+] as const
 
-	await selector.evaluate(async () => {
-		await document.fonts.ready
-		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-	})
+const tiers = [
+	{ name: "standard", value: OpenAiCodexServiceTier.Default },
+	{ name: "priority", value: OpenAiCodexServiceTier.Priority },
+] as const
 
-	await expect(selector).toHaveScreenshot("openai-codex-speed-selector-dark.png")
-})
+for (const theme of themes) {
+	for (const tier of tiers) {
+		test(`renders the ${tier.name} OpenAI Codex speed in the VS Code ${theme.name} theme`, async ({ mount }) => {
+			const component = await mount(<OpenAICodexFixture value={tier.value} />)
+			const selector = component.getByTestId("openai-codex-service-tier")
+
+			await selector.evaluate((element, { bodyClass, themeId }) => {
+				const { document } = element.ownerDocument.defaultView!
+
+				document.documentElement.className = bodyClass
+				document.body.className = bodyClass
+				document.body.dataset.vscodeThemeId = themeId
+			}, theme)
+			await expect
+				.poll(() =>
+					selector.evaluate((element) => {
+						const body = element.ownerDocument.body
+						const styles = getComputedStyle(body)
+						const trigger = element.querySelector("button")!
+
+						return {
+							documentClass: element.ownerDocument.documentElement.className,
+							bodyClass: body.className,
+							editorBackground: styles.getPropertyValue("--vscode-editor-background").trim(),
+							dropdownBackground: styles.getPropertyValue("--vscode-dropdown-background").trim(),
+							triggerBackground: getComputedStyle(trigger).backgroundColor,
+						}
+					}),
+				)
+				.toEqual({
+					documentClass: theme.bodyClass,
+					bodyClass: theme.bodyClass,
+					editorBackground: theme.editorBackground,
+					dropdownBackground: theme.dropdownBackground,
+					triggerBackground: theme.triggerBackground,
+				})
+
+			await selector.evaluate(async () => {
+				await document.fonts.ready
+				await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+			})
+
+			await expect(selector).toHaveScreenshot(`openai-codex-speed-selector-${tier.name}-${theme.name}.png`)
+		})
+	}
+}
