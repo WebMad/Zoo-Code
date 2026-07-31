@@ -2,26 +2,18 @@ import React from "react"
 
 import {
 	OPEN_AI_CODEX_SERVICE_TIER_KEY,
-	OpenAiCodexServiceTier,
 	type ProviderSettings,
 	openAiCodexDefaultModelId,
 	openAiCodexModels,
 } from "@roo-code/types"
 
 import { useAppTranslation } from "@src/i18n/TranslationContext"
-import {
-	Button,
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-	StandardTooltip,
-} from "@src/components/ui"
+import { Button } from "@src/components/ui"
 import { vscode } from "@src/utils/vscode"
 
 import { ModelPicker } from "../ModelPicker"
 import { OpenAICodexRateLimitDashboard } from "./OpenAICodexRateLimitDashboard"
+import { OpenAICodexSpeedSelector } from "./OpenAICodexSpeedSelector"
 
 interface OpenAICodexProps {
 	apiConfiguration: ProviderSettings
@@ -81,34 +73,10 @@ export const OpenAICodex: React.FC<OpenAICodexProps> = ({
 				hidePricing
 			/>
 
-			<div className="flex flex-col gap-1" data-testid="openai-codex-service-tier">
-				<div className="flex items-center gap-1">
-					<label className="block font-medium">{t("settings:openAiCodexSpeed.label")}</label>
-					<StandardTooltip content={t("settings:openAiCodexSpeed.tooltip")}>
-						<i className="codicon codicon-info text-vscode-descriptionForeground text-xs" />
-					</StandardTooltip>
-				</div>
-				<Select
-					value={apiConfiguration[OPEN_AI_CODEX_SERVICE_TIER_KEY] ?? OpenAiCodexServiceTier.Default}
-					onValueChange={(value) =>
-						setApiConfigurationField(
-							OPEN_AI_CODEX_SERVICE_TIER_KEY,
-							value as ProviderSettings[typeof OPEN_AI_CODEX_SERVICE_TIER_KEY],
-						)
-					}>
-					<SelectTrigger className="w-full">
-						<SelectValue placeholder={t("settings:common.select")} />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value={OpenAiCodexServiceTier.Default}>
-							{t("settings:openAiCodexSpeed.standard")}
-						</SelectItem>
-						<SelectItem value={OpenAiCodexServiceTier.Priority}>
-							{t("settings:openAiCodexSpeed.fast")}
-						</SelectItem>
-					</SelectContent>
-				</Select>
-			</div>
+			<OpenAICodexSpeedSelector
+				value={apiConfiguration[OPEN_AI_CODEX_SERVICE_TIER_KEY]}
+				onValueChange={(value) => setApiConfigurationField(OPEN_AI_CODEX_SERVICE_TIER_KEY, value)}
+			/>
 		</div>
 	)
 }
