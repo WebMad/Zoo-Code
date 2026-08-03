@@ -1,4 +1,4 @@
-import type { ProviderSettings } from "@roo-code/types"
+import { providerIdentifiers, type ProviderSettings } from "@roo-code/types"
 
 import type { RouterModels } from "@/ui/store.js"
 
@@ -36,21 +36,21 @@ export function getContextWindow(routerModels: RouterModels | null, apiConfigura
  */
 function getModelIdForProvider(config: ProviderSettings): string | undefined {
 	switch (config.apiProvider) {
-		case "openrouter":
+		case providerIdentifiers.openrouter:
 			return config.openRouterModelId
-		case "ollama":
+		case providerIdentifiers.ollama:
 			return config.ollamaModelId
-		case "lmstudio":
+		case providerIdentifiers.lmstudio:
 			return config.lmStudioModelId
-		case "openai":
+		case providerIdentifiers.openai:
 			return config.openAiModelId
-		case "requesty":
+		case providerIdentifiers.requesty:
 			return config.requestyModelId
-		case "unbound":
+		case providerIdentifiers.unbound:
 			return config.unboundModelId
-		case "litellm":
+		case providerIdentifiers.litellm:
 			return config.litellmModelId
-		case "vercel-ai-gateway":
+		case providerIdentifiers.vercelAiGateway:
 			return config.vercelAiGatewayModelId
 		default:
 			// For anthropic, bedrock, vertex, gemini, xai, etc.

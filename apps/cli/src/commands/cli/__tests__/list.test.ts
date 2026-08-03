@@ -1,3 +1,5 @@
+import { providerIdentifiers } from "@roo-code/types"
+
 import { readWorkspaceTaskSessions } from "@/lib/task-history/index.js"
 import { isRecord } from "@/lib/utils/guards.js"
 
@@ -43,13 +45,13 @@ describe("router model extraction", () => {
 	// This mirrors the extraction logic in requestOpenRouterModels (list.ts:226-228)
 	const extractOpenRouterModels = (routerModelsRaw: unknown) => {
 		const routerModels = isRecord(routerModelsRaw) ? routerModelsRaw : {}
-		const openRouterModels = routerModels.openrouter
+		const openRouterModels = routerModels[providerIdentifiers.openrouter]
 		return isRecord(openRouterModels) ? openRouterModels : {}
 	}
 
 	it("extracts openrouter models from valid routerModels", () => {
 		const models = { "openai/gpt-4.1": { contextWindow: 128000, supportsPromptCache: false } }
-		const result = extractOpenRouterModels({ openrouter: models })
+		const result = extractOpenRouterModels({ [providerIdentifiers.openrouter]: models })
 		expect(result).toEqual(models)
 	})
 
@@ -58,11 +60,11 @@ describe("router model extraction", () => {
 	})
 
 	it("returns empty object when openrouter key is missing", () => {
-		expect(extractOpenRouterModels({ requesty: {} })).toEqual({})
+		expect(extractOpenRouterModels({ [providerIdentifiers.requesty]: {} })).toEqual({})
 	})
 
 	it("returns empty object when openrouter value is not a record", () => {
-		expect(extractOpenRouterModels({ openrouter: "invalid" })).toEqual({})
+		expect(extractOpenRouterModels({ [providerIdentifiers.openrouter]: "invalid" })).toEqual({})
 	})
 })
 
