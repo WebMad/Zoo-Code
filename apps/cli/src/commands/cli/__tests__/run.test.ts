@@ -2,6 +2,73 @@ import fs from "fs"
 import path from "path"
 import os from "os"
 
+import { providerIdentifiers } from "@roo-code/types"
+import { DEFAULT_FLAGS } from "@/types/index.js"
+import {
+	resolveLegacyRequireApproval,
+	resolveModel,
+	resolveProvider,
+	resolveReasoningEffort,
+	resolveWorkspacePath,
+} from "../run.js"
+
+describe("resolveModel", () => {
+	it("uses the CLI flag before the settings model", () => {
+		expect(resolveModel("flag-model", "settings-model")).toBe("flag-model")
+	})
+
+	it("uses the settings model when the CLI flag is absent", () => {
+		expect(resolveModel(undefined, "settings-model")).toBe("settings-model")
+	})
+
+	it("uses the default model when neither the CLI flag nor settings provide one", () => {
+		expect(resolveModel()).toBe(DEFAULT_FLAGS.model)
+	})
+})
+
+describe("resolveReasoningEffort", () => {
+	it("uses CLI, settings, and default values in priority order", () => {
+		expect(resolveReasoningEffort("high", "low")).toBe("high")
+		expect(resolveReasoningEffort(undefined, "low")).toBe("low")
+		expect(resolveReasoningEffort()).toBe(DEFAULT_FLAGS.reasoningEffort)
+	})
+})
+
+describe("resolveProvider", () => {
+	it("uses CLI, settings, and openrouter values in priority order", () => {
+		expect(resolveProvider(providerIdentifiers.anthropic, providerIdentifiers.gemini)).toBe(
+			providerIdentifiers.anthropic,
+		)
+		expect(resolveProvider(undefined, providerIdentifiers.gemini)).toBe(providerIdentifiers.gemini)
+		expect(resolveProvider()).toBe(providerIdentifiers.openrouter)
+	})
+})
+
+describe("resolveWorkspacePath", () => {
+	it("resolves the provided workspace path", () => {
+		expect(resolveWorkspacePath("relative/workspace")).toBe(path.resolve("relative/workspace"))
+	})
+
+	it("uses the current working directory when workspace is absent", () => {
+		expect(resolveWorkspacePath()).toBe(process.cwd())
+	})
+})
+
+describe("resolveLegacyRequireApproval", () => {
+	it.each([
+		{ requireApproval: true, dangerouslySkipPermissions: true, expected: true },
+		{ requireApproval: false, dangerouslySkipPermissions: false, expected: false },
+		{ requireApproval: undefined, dangerouslySkipPermissions: false, expected: true },
+		{ requireApproval: undefined, dangerouslySkipPermissions: true, expected: false },
+		{ requireApproval: undefined, dangerouslySkipPermissions: undefined, expected: undefined },
+	])(
+		"resolves requireApproval=$requireApproval and dangerouslySkipPermissions=$dangerouslySkipPermissions",
+		({ requireApproval, dangerouslySkipPermissions, expected }) => {
+			expect(resolveLegacyRequireApproval(requireApproval, dangerouslySkipPermissions)).toBe(expected)
+		},
+	)
+})
+
 describe("run command --prompt-file option", () => {
 	let tempDir: string
 	let promptFilePath: string
