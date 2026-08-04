@@ -3,14 +3,41 @@ import path from "path"
 import os from "os"
 
 import { providerIdentifiers } from "@roo-code/types"
-import { DEFAULT_FLAGS } from "@/types/index.js"
+import { DEFAULT_FLAGS, FlagOptions } from "@/types/index.js"
 import {
 	resolveLegacyRequireApproval,
 	resolveModel,
 	resolveProvider,
 	resolveReasoningEffort,
 	resolveWorkspacePath,
+	run,
 } from "../run.js"
+
+const runCommandMocks = vi.hoisted(() => ({
+	activate: vi.fn(async () => undefined),
+	dispose: vi.fn(async () => undefined),
+	loadSettings: vi.fn(),
+	options: [] as unknown[],
+	runTask: vi.fn(async () => undefined),
+}))
+
+vi.mock("@/lib/storage/index.js", () => ({
+	loadSettings: runCommandMocks.loadSettings,
+}))
+
+vi.mock("@/agent/index.js", () => ({
+	ExtensionHost: class {
+		client = {}
+
+		constructor(options: unknown) {
+			runCommandMocks.options.push(options)
+		}
+
+		activate = runCommandMocks.activate
+		dispose = runCommandMocks.dispose
+		runTask = runCommandMocks.runTask
+	},
+}))
 
 describe("resolveModel", () => {
 	it("uses the CLI flag before the settings model", () => {
@@ -67,6 +94,58 @@ describe("resolveLegacyRequireApproval", () => {
 			expect(resolveLegacyRequireApproval(requireApproval, dangerouslySkipPermissions)).toBe(expected)
 		},
 	)
+})
+
+describe("run command option resolution", () => {
+	let workspacePath: string
+
+	beforeEach(() => {
+		vi.clearAllMocks()
+		runCommandMocks.options.length = 0
+		workspacePath = fs.mkdtempSync(path.join(os.tmpdir(), "roo-run-test-"))
+	})
+
+	afterEach(() => {
+		fs.rmSync(workspacePath, { recursive: true, force: true })
+		vi.restoreAllMocks()
+	})
+
+	it("passes resolved settings and workspace values to the extension host", async () => {
+		runCommandMocks.loadSettings.mockResolvedValue({
+			model: "settings-model",
+			reasoningEffort: "high",
+			provider: providerIdentifiers.anthropic,
+			dangerouslySkipPermissions: false,
+		})
+		const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never)
+		const flags: FlagOptions = {
+			continue: false,
+			workspace: path.relative(process.cwd(), workspacePath),
+			print: true,
+			stdinPromptStream: false,
+			signalOnlyExit: false,
+			debug: false,
+			requireApproval: false,
+			exitOnError: false,
+			apiKey: "test-api-key",
+			ephemeral: true,
+			oneshot: false,
+		}
+
+		await run("test prompt", flags)
+
+		expect(runCommandMocks.options).toEqual([
+			expect.objectContaining({
+				model: "settings-model",
+				reasoningEffort: "high",
+				provider: providerIdentifiers.anthropic,
+				workspacePath,
+				nonInteractive: false,
+			}),
+		])
+		expect(runCommandMocks.runTask).toHaveBeenCalledWith("test prompt", undefined)
+		expect(exitSpy).toHaveBeenCalledWith(0)
+	})
 })
 
 describe("run command --prompt-file option", () => {
