@@ -1,4 +1,4 @@
-import { providerIdentifiers, type ProviderSettings } from "@roo-code/types"
+import { providerIdentifiers, retiredProviderIdentifiers, type ProviderSettings } from "@roo-code/types"
 
 import type { RouterModels } from "@/ui/store.js"
 
@@ -52,8 +52,45 @@ function getModelIdForProvider(config: ProviderSettings): string | undefined {
 			return config.litellmModelId
 		case providerIdentifiers.vercelAiGateway:
 			return config.vercelAiGatewayModelId
-		default:
-			// For anthropic, bedrock, vertex, gemini, xai, etc.
+		case providerIdentifiers.opencodeGo:
+			return config.opencodeGoModelId
+		case providerIdentifiers.kenari:
+			return config.kenariModelId
+		case providerIdentifiers.zooGateway:
+			return config.zooGatewayModelId
+		case providerIdentifiers.anthropic:
+		case providerIdentifiers.bedrock:
+		case providerIdentifiers.baseten:
+		case providerIdentifiers.deepseek:
+		case providerIdentifiers.fireworks:
+		case providerIdentifiers.friendli:
+		case providerIdentifiers.gemini:
+		case providerIdentifiers.geminiCli:
+		case providerIdentifiers.mistral:
+		case providerIdentifiers.moonshot:
+		case providerIdentifiers.kimiCode:
+		case providerIdentifiers.minimax:
+		case providerIdentifiers.mimo:
+		case providerIdentifiers.openaiCodex:
+		case providerIdentifiers.openaiNative:
+		case providerIdentifiers.poe:
+		case providerIdentifiers.qwenCode:
+		case providerIdentifiers.sambanova:
+		case providerIdentifiers.vertex:
+		case providerIdentifiers.xai:
+		case providerIdentifiers.zai:
+		case retiredProviderIdentifiers.cerebras:
+		case retiredProviderIdentifiers.chutes:
+		case retiredProviderIdentifiers.deepinfra:
+		case retiredProviderIdentifiers.doubao:
+		case retiredProviderIdentifiers.featherless:
+		case retiredProviderIdentifiers.groq:
+		case retiredProviderIdentifiers.huggingface:
+		case retiredProviderIdentifiers.ioIntelligence:
+		case retiredProviderIdentifiers.roo:
+		case providerIdentifiers.vscodeLm:
+		case providerIdentifiers.fakeAi:
+		case undefined:
 			return config.apiModelId
 	}
 }
