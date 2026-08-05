@@ -3,6 +3,7 @@
 import React from "react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { renderHook } from "@testing-library/react"
+import type { Mock } from "vitest"
 
 import {
 	ProviderSettings,
@@ -24,54 +25,17 @@ import {
 	moonshotModels,
 	kimiCodeDefaultModelInfo,
 	providerIdentifiers,
-	type RouterModels,
 } from "@roo-code/types"
 
 import { useSelectedModel } from "../useSelectedModel"
-import type { useRouterModels } from "../useRouterModels"
-import type { useOpenRouterModelProviders } from "../useOpenRouterModelProviders"
+import { useRouterModels } from "../useRouterModels"
+import { useOpenRouterModelProviders } from "../useOpenRouterModelProviders"
 
-type RouterModelsResult = Pick<ReturnType<typeof useRouterModels>, "data" | "isLoading" | "isError">
-type OpenRouterModelProvidersResult = Pick<
-	ReturnType<typeof useOpenRouterModelProviders>,
-	"data" | "isLoading" | "isError"
->
-type OpenRouterModelProvider = NonNullable<OpenRouterModelProvidersResult["data"]>[string]
+vi.mock("../useRouterModels")
+vi.mock("../useOpenRouterModelProviders")
 
-const { mockUseRouterModels, mockUseOpenRouterModelProviders } = vi.hoisted(() => ({
-	mockUseRouterModels: vi.fn<(...args: Parameters<typeof useRouterModels>) => RouterModelsResult>(),
-	mockUseOpenRouterModelProviders:
-		vi.fn<(...args: Parameters<typeof useOpenRouterModelProviders>) => OpenRouterModelProvidersResult>(),
-}))
-
-vi.mock("../useRouterModels", () => ({ useRouterModels: mockUseRouterModels }))
-vi.mock("../useOpenRouterModelProviders", () => ({ useOpenRouterModelProviders: mockUseOpenRouterModelProviders }))
-
-const emptyRouterModels = {
-	[providerIdentifiers.openrouter]: {},
-	[providerIdentifiers.vercelAiGateway]: {},
-	[providerIdentifiers.zooGateway]: {},
-	[providerIdentifiers.litellm]: {},
-	[providerIdentifiers.requesty]: {},
-	[providerIdentifiers.unbound]: {},
-	[providerIdentifiers.poe]: {},
-	[providerIdentifiers.deepseek]: {},
-	[providerIdentifiers.moonshot]: {},
-	[providerIdentifiers.opencodeGo]: {},
-	[providerIdentifiers.kenari]: {},
-	[providerIdentifiers.kimiCode]: {},
-	[providerIdentifiers.ollama]: {},
-	[providerIdentifiers.lmstudio]: {},
-} satisfies RouterModels
-
-const routerModelsResult = (result: Omit<RouterModelsResult, "data"> & { data?: Partial<RouterModels> }) =>
-	({
-		...result,
-		data: result.data ? { ...emptyRouterModels, ...result.data } : undefined,
-	}) satisfies RouterModelsResult
-
-const openRouterModelProvidersResult = (result: OpenRouterModelProvidersResult) =>
-	result satisfies OpenRouterModelProvidersResult
+const mockUseRouterModels = useRouterModels as Mock<typeof useRouterModels>
+const mockUseOpenRouterModelProviders = useOpenRouterModelProviders as Mock<typeof useOpenRouterModelProviders>
 
 const createWrapper = () => {
 	const queryClient = new QueryClient({
@@ -95,7 +59,7 @@ describe("useSelectedModel", () => {
 				supportsPromptCache: false,
 			}
 
-			const specificProviderInfo: OpenRouterModelProvider = {
+			const specificProviderInfo: ModelInfo = {
 				maxTokens: 8192, // Different value that should override
 				contextWindow: 16384, // Different value that should override
 				supportsImages: true, // Different value that should override
@@ -103,32 +67,27 @@ describe("useSelectedModel", () => {
 				inputPrice: 0.001,
 				outputPrice: 0.002,
 				description: "Provider-specific description",
-				label: "Test provider",
 			}
 
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {
-							"test-model": baseModelInfo,
-						},
-						requesty: {},
-						litellm: {},
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {
+						"test-model": baseModelInfo,
 					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+					requesty: {},
+					litellm: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: {
-						"test-provider": specificProviderInfo,
-					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: {
+					"test-provider": specificProviderInfo,
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: providerIdentifiers.openrouter,
@@ -148,12 +107,11 @@ describe("useSelectedModel", () => {
 				inputPrice: 0.001,
 				outputPrice: 0.002,
 				description: "Provider-specific description",
-				label: "Test provider",
 			})
 		})
 
 		it("should fall back to default when configured model doesn't exist in available models", () => {
-			const specificProviderInfo: OpenRouterModelProvider = {
+			const specificProviderInfo: ModelInfo = {
 				maxTokens: 8192,
 				contextWindow: 16384,
 				supportsImages: true,
@@ -161,41 +119,36 @@ describe("useSelectedModel", () => {
 				inputPrice: 0.001,
 				outputPrice: 0.002,
 				description: "Provider-specific description",
-				label: "Test provider",
 			}
 
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {
-							"anthropic/claude-sonnet-4.5": {
-								maxTokens: 8192,
-								contextWindow: 200_000,
-								supportsImages: true,
-								supportsPromptCache: true,
-								inputPrice: 3.0,
-								outputPrice: 15.0,
-								cacheWritesPrice: 3.75,
-								cacheReadsPrice: 0.3,
-							},
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {
+						"anthropic/claude-sonnet-4.5": {
+							maxTokens: 8192,
+							contextWindow: 200_000,
+							supportsImages: true,
+							supportsPromptCache: true,
+							inputPrice: 3.0,
+							outputPrice: 15.0,
+							cacheWritesPrice: 3.75,
+							cacheReadsPrice: 0.3,
 						},
-						requesty: {},
-						litellm: {},
 					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+					requesty: {},
+					litellm: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: {
-						"test-provider": specificProviderInfo,
-					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: {
+					"test-provider": specificProviderInfo,
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: providerIdentifiers.openrouter,
@@ -224,7 +177,7 @@ describe("useSelectedModel", () => {
 			})
 		})
 
-		it("should merge provider values with base-only pricing fields", () => {
+		it("should demonstrate the merging behavior validates the comment about missing fields", () => {
 			const baseModelInfo: ModelInfo = {
 				maxTokens: 4096,
 				contextWindow: 8192,
@@ -234,38 +187,31 @@ describe("useSelectedModel", () => {
 				cacheReadsPrice: 0.01,
 			}
 
-			const specificProviderInfo = {
+			const specificProviderInfo: Partial<ModelInfo> = {
 				inputPrice: 0.001,
 				outputPrice: 0.002,
 				description: "Provider-specific description",
 				maxTokens: 8192, // Override this one
 				supportsImages: true, // Override this one
-				contextWindow: 8192,
-				supportsPromptCache: false,
-				label: "Test provider",
 			}
 
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {
-							"test-model": baseModelInfo,
-						},
-						requesty: {},
-						litellm: {},
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {
+						"test-model": baseModelInfo,
 					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+					requesty: {},
+					litellm: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: { "test-provider": specificProviderInfo },
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: { "test-provider": specificProviderInfo as ModelInfo },
+				isLoading: false,
+				isError: false,
+			} as any)
 
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: providerIdentifiers.openrouter,
@@ -278,9 +224,9 @@ describe("useSelectedModel", () => {
 
 			expect(result.current.id).toBe("test-model")
 			expect(result.current.info).toEqual({
-				// Values shared by the base model and provider
-				contextWindow: 8192,
-				supportsPromptCache: false,
+				// Fields from base model that provider doesn't have
+				contextWindow: 8192, // From base (provider doesn't override)
+				supportsPromptCache: false, // From base (provider doesn't override)
 				cacheWritesPrice: 0.1, // From base (provider doesn't have)
 				cacheReadsPrice: 0.01, // From base (provider doesn't have)
 
@@ -292,7 +238,6 @@ describe("useSelectedModel", () => {
 				inputPrice: 0.001, // From provider (base doesn't have)
 				outputPrice: 0.002, // From provider (base doesn't have)
 				description: "Provider-specific description", // From provider (base doesn't have)
-				label: "Test provider", // From provider (base doesn't have)
 			})
 		})
 
@@ -304,25 +249,21 @@ describe("useSelectedModel", () => {
 				supportsPromptCache: false,
 			}
 
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: { "test-model": baseModelInfo },
-						requesty: {},
-						litellm: {},
-					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: { "test-model": baseModelInfo },
+					requesty: {},
+					litellm: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: {},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: {},
+				isLoading: false,
+				isError: false,
+			} as any)
 
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: providerIdentifiers.openrouter,
@@ -337,37 +278,33 @@ describe("useSelectedModel", () => {
 		})
 
 		it("should fall back to default when configured model and provider don't exist", () => {
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {
-							"anthropic/claude-sonnet-4.5": {
-								// Default model - using correct default model name
-								maxTokens: 8192,
-								contextWindow: 200_000,
-								supportsImages: true,
-								supportsPromptCache: true,
-								inputPrice: 3.0,
-								outputPrice: 15.0,
-								cacheWritesPrice: 3.75,
-								cacheReadsPrice: 0.3,
-							},
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {
+						"anthropic/claude-sonnet-4.5": {
+							// Default model - using correct default model name
+							maxTokens: 8192,
+							contextWindow: 200_000,
+							supportsImages: true,
+							supportsPromptCache: true,
+							inputPrice: 3.0,
+							outputPrice: 15.0,
+							cacheWritesPrice: 3.75,
+							cacheReadsPrice: 0.3,
 						},
-						requesty: {},
-						litellm: {},
 					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+					requesty: {},
+					litellm: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: {},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: {},
+				isLoading: false,
+				isError: false,
+			} as any)
 
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: providerIdentifiers.openrouter,
@@ -396,21 +333,17 @@ describe("useSelectedModel", () => {
 
 	describe("loading and error states", () => {
 		it("should set loading when router models are loading for the default OpenRouter provider", () => {
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: undefined,
-					isLoading: true,
-					isError: false,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: undefined,
+				isLoading: true,
+				isError: false,
+			} as any)
 
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: undefined,
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: undefined,
+				isLoading: false,
+				isError: false,
+			} as any)
 
 			const wrapper = createWrapper()
 			const { result } = renderHook(() => useSelectedModel(), { wrapper })
@@ -419,21 +352,17 @@ describe("useSelectedModel", () => {
 		})
 
 		it("should set loading when OpenRouter provider metadata is loading for the default provider", () => {
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: { openrouter: {}, requesty: {}, litellm: {} },
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: { openrouter: {}, requesty: {}, litellm: {} },
+				isLoading: false,
+				isError: false,
+			} as any)
 
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: undefined,
-					isLoading: true,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: undefined,
+				isLoading: true,
+				isError: false,
+			} as any)
 
 			const wrapper = createWrapper()
 			const { result } = renderHook(() => useSelectedModel(), { wrapper })
@@ -442,21 +371,17 @@ describe("useSelectedModel", () => {
 		})
 
 		it("should set error when router models error for the default OpenRouter provider", () => {
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: undefined,
-					isLoading: false,
-					isError: true,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: undefined,
+				isLoading: false,
+				isError: true,
+			} as any)
 
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: {},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: {},
+				isLoading: false,
+				isError: false,
+			} as any)
 
 			const wrapper = createWrapper()
 			const { result } = renderHook(() => useSelectedModel(), { wrapper })
@@ -467,21 +392,17 @@ describe("useSelectedModel", () => {
 
 	describe("default behavior", () => {
 		it("should return OpenRouter default when no configuration is provided", () => {
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: undefined,
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: undefined,
+				isLoading: false,
+				isError: false,
+			} as any)
 
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: undefined,
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: undefined,
+				isLoading: false,
+				isError: false,
+			} as any)
 
 			const wrapper = createWrapper()
 			const { result } = renderHook(() => useSelectedModel(), { wrapper })
@@ -494,21 +415,17 @@ describe("useSelectedModel", () => {
 
 	describe("anthropic provider with 1M context", () => {
 		beforeEach(() => {
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: undefined,
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: undefined,
+				isLoading: false,
+				isError: false,
+			} as any)
 
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: undefined,
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: undefined,
+				isLoading: false,
+				isError: false,
+			} as any)
 		})
 
 		it("should apply 1M pricing tier for Claude Sonnet 4.6 when enabled", () => {
@@ -563,25 +480,21 @@ describe("useSelectedModel", () => {
 
 	describe("bedrock provider with 1M context", () => {
 		beforeEach(() => {
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {},
-						requesty: {},
-						litellm: {},
-					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: {},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: {},
+				isLoading: false,
+				isError: false,
+			} as any)
 		})
 
 		it("should enable 1M context window for Bedrock Claude Sonnet 4 when awsBedrock1MContext is true", () => {
@@ -629,25 +542,21 @@ describe("useSelectedModel", () => {
 
 	describe("bedrock provider with custom ARN", () => {
 		beforeEach(() => {
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {},
-						requesty: {},
-						litellm: {},
-					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: {},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: {},
+				isLoading: false,
+				isError: false,
+			} as any)
 		})
 
 		it("should enable supportsPromptCache for custom-arn model", () => {
@@ -679,27 +588,23 @@ describe("useSelectedModel", () => {
 
 	describe("litellm provider", () => {
 		beforeEach(() => {
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: {},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: {},
+				isLoading: false,
+				isError: false,
+			} as any)
 		})
 
 		it("should use litellmDefaultModelInfo as fallback when routerModels.litellm is empty", () => {
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {},
-						requesty: {},
-						litellm: {},
-					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: providerIdentifiers.litellm,
@@ -717,17 +622,15 @@ describe("useSelectedModel", () => {
 		})
 
 		it("should return an empty model ID when the list is empty and no model is configured", () => {
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {},
-						requesty: {},
-						litellm: {},
-					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: providerIdentifiers.litellm,
@@ -747,24 +650,22 @@ describe("useSelectedModel", () => {
 			// Primary user-visible scenario: a "Sync Models" click momentarily empties the
 			// router-models list before the refreshed list arrives. The selection must be held
 			// across that transition rather than reset.
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {},
-						requesty: {},
-						litellm: {
-							"my-custom-model": {
-								maxTokens: 4096,
-								contextWindow: 8192,
-								supportsImages: false,
-								supportsPromptCache: false,
-							},
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {
+						"my-custom-model": {
+							maxTokens: 4096,
+							contextWindow: 8192,
+							supportsImages: false,
+							supportsPromptCache: false,
 						},
 					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: providerIdentifiers.litellm,
@@ -778,17 +679,15 @@ describe("useSelectedModel", () => {
 			expect(result.current.id).toBe("my-custom-model")
 
 			// Simulate the list emptying mid-sync.
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {},
-						requesty: {},
-						litellm: {},
-					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 			rerender()
 
 			// Selection is preserved through the empty window.
@@ -796,24 +695,22 @@ describe("useSelectedModel", () => {
 		})
 
 		it("should use litellmDefaultModelInfo when selected model not found in routerModels", () => {
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {},
-						requesty: {},
-						litellm: {
-							"existing-model": {
-								maxTokens: 4096,
-								contextWindow: 8192,
-								supportsImages: false,
-								supportsPromptCache: false,
-							},
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {
+						"existing-model": {
+							maxTokens: 4096,
+							contextWindow: 8192,
+							supportsImages: false,
+							supportsPromptCache: false,
 						},
 					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: providerIdentifiers.litellm,
@@ -839,19 +736,17 @@ describe("useSelectedModel", () => {
 				description: "Custom LiteLLM model",
 			}
 
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {},
-						requesty: {},
-						litellm: {
-							"custom-model": customModelInfo,
-						},
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {
+						"custom-model": customModelInfo,
 					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: providerIdentifiers.litellm,
@@ -869,13 +764,11 @@ describe("useSelectedModel", () => {
 
 	describe("kenari provider", () => {
 		beforeEach(() => {
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: {},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: {},
+				isLoading: false,
+				isError: false,
+			} as any)
 		})
 
 		it("should return routerModels info for the configured kenari model", () => {
@@ -887,20 +780,18 @@ describe("useSelectedModel", () => {
 				description: "GLM 5.2 via Kenari",
 			}
 
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {},
-						requesty: {},
-						litellm: {},
-						kenari: {
-							"glm-5-2": customModelInfo,
-						},
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {},
+					kenari: {
+						"glm-5-2": customModelInfo,
 					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: providerIdentifiers.kenari,
@@ -916,18 +807,16 @@ describe("useSelectedModel", () => {
 		})
 
 		it("should use kenariDefaultModelInfo as fallback when routerModels.kenari is empty", () => {
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {},
-						requesty: {},
-						litellm: {},
-						kenari: {},
-					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {},
+					kenari: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: providerIdentifiers.kenari,
@@ -947,25 +836,21 @@ describe("useSelectedModel", () => {
 
 	describe("openai provider", () => {
 		beforeEach(() => {
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {},
-						requesty: {},
-						litellm: {},
-					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: {},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: {},
+				isLoading: false,
+				isError: false,
+			} as any)
 		})
 
 		it("should use openAiModelInfoSaneDefaults when no custom model info is provided", () => {
@@ -1032,25 +917,21 @@ describe("useSelectedModel", () => {
 
 	describe("minimax provider", () => {
 		beforeEach(() => {
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {},
-						requesty: {},
-						litellm: {},
-					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: {},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: {},
+				isLoading: false,
+				isError: false,
+			} as any)
 		})
 
 		it("should return default minimax model when no custom model is specified", () => {
@@ -1083,25 +964,21 @@ describe("useSelectedModel", () => {
 
 	describe("vscode-lm provider", () => {
 		beforeEach(() => {
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {},
-						requesty: {},
-						litellm: {},
-					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: {},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: {},
+				isLoading: false,
+				isError: false,
+			} as any)
 		})
 
 		it("resolves a listed family's contextWindow to its maxInputTokens", () => {
@@ -1158,25 +1035,21 @@ describe("useSelectedModel", () => {
 
 	describe("friendli provider", () => {
 		beforeEach(() => {
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {},
-						requesty: {},
-						litellm: {},
-					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: {},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: {},
+				isLoading: false,
+				isError: false,
+			} as any)
 		})
 
 		it("should return default Friendli model when no custom model is specified", () => {
@@ -1214,13 +1087,11 @@ describe("useSelectedModel", () => {
 				description: "Configured Kimi Code model",
 			}
 
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: { "kimi-code": { "kimi-for-coding": modelInfo } },
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: { "kimi-code": { "kimi-for-coding": modelInfo } },
+				isLoading: false,
+				isError: false,
+			} as any)
 
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: providerIdentifiers.kimiCode,
@@ -1255,26 +1126,22 @@ describe("useSelectedModel", () => {
 
 	describe("moonshot provider", () => {
 		beforeEach(() => {
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {},
-						requesty: {},
-						litellm: {},
-						moonshot: {},
-					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {},
+					moonshot: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
-			mockUseOpenRouterModelProviders.mockReturnValue(
-				openRouterModelProvidersResult({
-					data: {},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: {},
+				isLoading: false,
+				isError: false,
+			} as any)
 		})
 
 		it("should return default moonshot model when no custom model is specified", () => {
@@ -1300,20 +1167,18 @@ describe("useSelectedModel", () => {
 				outputPrice: 5.0,
 			}
 
-			mockUseRouterModels.mockReturnValue(
-				routerModelsResult({
-					data: {
-						openrouter: {},
-						requesty: {},
-						litellm: {},
-						moonshot: {
-							"kimi-k2-0905-preview": routerModelInfo,
-						},
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {},
+					moonshot: {
+						"kimi-k2-0905-preview": routerModelInfo,
 					},
-					isLoading: false,
-					isError: false,
-				}),
-			)
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
 
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: providerIdentifiers.moonshot,
