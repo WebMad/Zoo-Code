@@ -7,6 +7,7 @@ import {
 	type RouterModels,
 	type ExtensionMessage,
 	opencodeGoDefaultModelId,
+	providerIdentifiers,
 } from "@roo-code/types"
 
 import type { RouterName } from "@roo/api"
@@ -46,7 +47,7 @@ export const OpenCodeGo = ({
 			const message = event.data
 			if (message.type === "singleRouterModelFetchResponse" && !message.success) {
 				const providerName = message.values?.provider as RouterName
-				if (providerName === "opencode-go") {
+				if (providerName === providerIdentifiers.opencodeGo) {
 					errorJustReceived.current = true
 					setRefreshStatus("error")
 					setRefreshError(message.error)
@@ -83,7 +84,11 @@ export const OpenCodeGo = ({
 		setRefreshError(undefined)
 		vscode.postMessage({
 			type: "requestRouterModels",
-			values: { provider: "opencode-go", refresh: true, opencodeGoApiKey: apiConfiguration.opencodeGoApiKey },
+			values: {
+				provider: providerIdentifiers.opencodeGo,
+				refresh: true,
+				opencodeGoApiKey: apiConfiguration.opencodeGoApiKey,
+			},
 		})
 	}, [apiConfiguration.opencodeGoApiKey])
 
@@ -136,7 +141,7 @@ export const OpenCodeGo = ({
 				apiConfiguration={apiConfiguration}
 				setApiConfigurationField={setApiConfigurationField}
 				defaultModelId={opencodeGoDefaultModelId}
-				models={routerModels?.["opencode-go"] ?? {}}
+				models={routerModels?.[providerIdentifiers.opencodeGo] ?? {}}
 				modelIdKey="opencodeGoModelId"
 				serviceName="Opencode Go"
 				serviceUrl="https://opencode.ai/docs/go/"

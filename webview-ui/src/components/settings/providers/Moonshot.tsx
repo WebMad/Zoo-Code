@@ -2,8 +2,12 @@ import { useCallback, useState, useEffect, useRef } from "react"
 import { VSCodeTextField, VSCodeDropdown, VSCodeOption } from "@vscode/webview-ui-toolkit/react"
 import { useQueryClient } from "@tanstack/react-query"
 
-import type { ProviderSettings, ExtensionMessage } from "@roo-code/types"
-import { moonshotDefaultModelId } from "@roo-code/types"
+import {
+	type ProviderSettings,
+	type ExtensionMessage,
+	moonshotDefaultModelId,
+	providerIdentifiers,
+} from "@roo-code/types"
 
 import { RouterName } from "@roo/api"
 
@@ -14,7 +18,6 @@ import { vscode } from "@src/utils/vscode"
 import { Button } from "@src/components/ui"
 import { ModelPicker } from "../ModelPicker"
 import { handleModelChangeSideEffects } from "../utils/providerModelConfig"
-import type { ProviderName } from "@roo-code/types"
 
 import { inputEventTransform } from "../transforms"
 
@@ -37,7 +40,7 @@ export const Moonshot = ({ apiConfiguration, setApiConfigurationField, simplifyS
 			const message = event.data
 			if (message.type === "singleRouterModelFetchResponse" && !message.success) {
 				const providerName = message.values?.provider as RouterName
-				if (providerName === "moonshot" && refreshStatus === "loading") {
+				if (providerName === providerIdentifiers.moonshot && refreshStatus === "loading") {
 					moonshotErrorJustReceived.current = true
 					setRefreshStatus("error")
 					setRefreshError(message.error)
@@ -138,7 +141,7 @@ export const Moonshot = ({ apiConfiguration, setApiConfigurationField, simplifyS
 				serviceUrl="https://platform.moonshot.ai"
 				simplifySettings={simplifySettings}
 				onModelChange={(modelId) =>
-					handleModelChangeSideEffects("moonshot" as ProviderName, modelId, setApiConfigurationField)
+					handleModelChangeSideEffects(providerIdentifiers.moonshot, modelId, setApiConfigurationField)
 				}
 			/>
 			<Button

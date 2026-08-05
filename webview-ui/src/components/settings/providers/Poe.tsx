@@ -7,7 +7,7 @@ import {
 	type OrganizationAllowList,
 	type ExtensionMessage,
 	poeDefaultModelId,
-	type ProviderName,
+	providerIdentifiers,
 } from "@roo-code/types"
 
 import { RouterName } from "@roo/api"
@@ -49,7 +49,7 @@ export const Poe = ({
 			const message = event.data
 			if (message.type === "singleRouterModelFetchResponse" && !message.success) {
 				const providerName = message.values?.provider as RouterName
-				if (providerName === "poe") {
+				if (providerName === providerIdentifiers.poe) {
 					poeErrorJustReceived.current = true
 					setRefreshStatus("error")
 					setRefreshError(message.error)
@@ -158,7 +158,7 @@ export const Poe = ({
 				errorMessage={modelValidationError}
 				simplifySettings={simplifySettings}
 				onModelChange={(modelId) =>
-					handleModelChangeSideEffects("poe" as ProviderName, modelId, setApiConfigurationField)
+					handleModelChangeSideEffects(providerIdentifiers.poe, modelId, setApiConfigurationField)
 				}
 			/>
 		</>

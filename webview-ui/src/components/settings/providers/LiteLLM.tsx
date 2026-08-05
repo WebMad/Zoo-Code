@@ -7,6 +7,7 @@ import {
 	type OrganizationAllowList,
 	type ExtensionMessage,
 	litellmDefaultModelId,
+	providerIdentifiers,
 } from "@roo-code/types"
 
 import { RouterName } from "@roo/api"
@@ -46,7 +47,7 @@ export const LiteLLM = ({
 			const message = event.data
 			if (message.type === "singleRouterModelFetchResponse" && !message.success) {
 				const providerName = message.values?.provider as RouterName
-				if (providerName === "litellm") {
+				if (providerName === providerIdentifiers.litellm) {
 					litellmErrorJustReceived.current = true
 					setRefreshStatus("error")
 					setRefreshError(message.error)
@@ -57,12 +58,11 @@ export const LiteLLM = ({
 				if (refreshStatus === "loading") {
 					if (!litellmErrorJustReceived.current) {
 						setRefreshStatus("success")
-						// Invalidate only the LiteLLM router-models query so useSelectedModel
-						// picks up the refreshed list. useSelectedModel reads LiteLLM under the
-						// compound key ["routerModels", "litellm"] (see useRouterModels), so we
-						// target that exact key rather than the bare ["routerModels"] prefix,
-						// which would needlessly invalidate every other provider's query too.
-						queryClient.invalidateQueries({ queryKey: ["routerModels", "litellm"] })
+						// Refresh the provider-scoped cache used by useSelectedModel and the shared cache used by
+						// ApiOptions. Target both exact keys rather than the bare ["routerModels"] prefix, which
+						// would needlessly invalidate every other provider's query too.
+						void queryClient.invalidateQueries({ queryKey: ["routerModels", providerIdentifiers.litellm] })
+						void queryClient.invalidateQueries({ queryKey: ["routerModels", "all"] })
 					}
 					// If litellmErrorJustReceived.current is true, status is already (or will be) "error".
 				}
