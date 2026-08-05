@@ -43,6 +43,19 @@ const getPricingRowValues = (tier: string) => {
 }
 
 describe("ModelInfoView service tier pricing", () => {
+	it("shows Gemini billing guidance for the canonical Gemini provider", () => {
+		render(
+			<ModelInfoView
+				{...defaultProps}
+				apiProvider={providerIdentifiers.gemini}
+				selectedModelId="gemini-3-pro-preview"
+				modelInfo={baseModelInfo}
+			/>,
+		)
+
+		expect(screen.getByText("settings:modelInfo.gemini.billingEstimate")).toBeInTheDocument()
+	})
+
 	it("shows OpenAI Native tier prices with per-field fallback to Standard pricing", () => {
 		const modelInfo: ModelInfo = {
 			...baseModelInfo,
