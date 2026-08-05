@@ -18,6 +18,7 @@ import {
 	minimaxModels,
 	friendliDefaultModelId,
 	friendliModels,
+	deepSeekDefaultModelId,
 	openRouterDefaultModelId,
 	vscodeLlmModels,
 	vscodeLlmDefaultModelId,
@@ -25,17 +26,24 @@ import {
 	moonshotModels,
 	kimiCodeDefaultModelInfo,
 	providerIdentifiers,
+	retiredProviderIdentifiers,
 } from "@roo-code/types"
 
 import { useSelectedModel } from "../useSelectedModel"
 import { useRouterModels } from "../useRouterModels"
 import { useOpenRouterModelProviders } from "../useOpenRouterModelProviders"
+import { useLmStudioModels } from "../useLmStudioModels"
+import { useOllamaModels } from "../useOllamaModels"
 
 vi.mock("../useRouterModels")
 vi.mock("../useOpenRouterModelProviders")
+vi.mock("../useLmStudioModels")
+vi.mock("../useOllamaModels")
 
 const mockUseRouterModels = useRouterModels as Mock<typeof useRouterModels>
 const mockUseOpenRouterModelProviders = useOpenRouterModelProviders as Mock<typeof useOpenRouterModelProviders>
+const mockUseLmStudioModels = useLmStudioModels as Mock<typeof useLmStudioModels>
+const mockUseOllamaModels = useOllamaModels as Mock<typeof useOllamaModels>
 
 const createWrapper = () => {
 	const queryClient = new QueryClient({
@@ -50,6 +58,146 @@ const createWrapper = () => {
 }
 
 describe("useSelectedModel", () => {
+	beforeEach(() => {
+		mockUseLmStudioModels.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+		mockUseOllamaModels.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+	})
+
+	const dynamicProviderCases = [
+		[providerIdentifiers.requesty, "requestyModelId"],
+		[providerIdentifiers.unbound, "unboundModelId"],
+		[providerIdentifiers.vercelAiGateway, "vercelAiGatewayModelId"],
+		[providerIdentifiers.opencodeGo, "opencodeGoModelId"],
+		[providerIdentifiers.zooGateway, "zooGatewayModelId"],
+	] as const
+
+	it.each(dynamicProviderCases)("uses router data for %s", (provider, modelIdKey) => {
+		const modelInfo: ModelInfo = { contextWindow: 42_000, supportsPromptCache: false }
+		mockUseRouterModels.mockReturnValue({
+			data: { [provider]: { model: modelInfo } },
+			isLoading: false,
+			isError: false,
+		} as any)
+		mockUseOpenRouterModelProviders.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+
+		const apiConfiguration = {
+			apiProvider: provider,
+			[modelIdKey]: "model",
+		} as ProviderSettings
+		const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper: createWrapper() })
+
+		expect(result.current.id).toBe("model")
+		expect(result.current.info).toEqual(modelInfo)
+	})
+
+	it.each([
+		[providerIdentifiers.lmstudio, "lmStudioModelId"],
+		[providerIdentifiers.ollama, "ollamaModelId"],
+	] as const)("passes the configured model ID to the %s model hook", (provider, modelIdKey) => {
+		mockUseRouterModels.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+		mockUseOpenRouterModelProviders.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+		mockUseLmStudioModels.mockReturnValue({
+			data: { "configured-model": {} },
+			isLoading: false,
+			isError: false,
+		} as any)
+		mockUseOllamaModels.mockReturnValue({
+			data: { "configured-model": {} },
+			isLoading: false,
+			isError: false,
+		} as any)
+
+		const { result } = renderHook(
+			() => useSelectedModel({ apiProvider: provider, [modelIdKey]: "configured-model" }),
+			{ wrapper: createWrapper() },
+		)
+
+		expect(result.current.id).toBe("configured-model")
+	})
+
+	it("falls back to the OpenRouter default for a retired provider", () => {
+		mockUseRouterModels.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+		mockUseOpenRouterModelProviders.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+
+		const { result } = renderHook(() => useSelectedModel({ apiProvider: retiredProviderIdentifiers.cerebras }), {
+			wrapper: createWrapper(),
+		})
+
+		expect(result.current.id).toBe(openRouterDefaultModelId)
+	})
+
+	it("uses OpenCode Go default model information when the router catalog is empty", () => {
+		mockUseRouterModels.mockReturnValue({
+			data: { [providerIdentifiers.opencodeGo]: {} },
+			isLoading: false,
+			isError: false,
+		} as any)
+		mockUseOpenRouterModelProviders.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+
+		const { result } = renderHook(() => useSelectedModel({ apiProvider: providerIdentifiers.opencodeGo }), {
+			wrapper: createWrapper(),
+		})
+
+		expect(result.current.info).toBeDefined()
+	})
+
+	it.each([providerIdentifiers.deepseek, providerIdentifiers.moonshot])(
+		"prefers router data over static data for %s",
+		(provider) => {
+			const modelInfo: ModelInfo = { contextWindow: 42_000, supportsPromptCache: false }
+			const modelId = provider === providerIdentifiers.deepseek ? deepSeekDefaultModelId : moonshotDefaultModelId
+			mockUseRouterModels.mockReturnValue({
+				data: { [provider]: { [modelId]: modelInfo } },
+				isLoading: false,
+				isError: false,
+			} as any)
+			mockUseOpenRouterModelProviders.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+
+			const { result } = renderHook(() => useSelectedModel({ apiProvider: provider, apiModelId: modelId }), {
+				wrapper: createWrapper(),
+			})
+
+			expect(result.current.info).toEqual(modelInfo)
+		},
+	)
+
+	it.each([providerIdentifiers.deepseek, providerIdentifiers.moonshot])(
+		"falls back to static data when the %s router catalog is null",
+		(provider) => {
+			const modelId = provider === providerIdentifiers.deepseek ? deepSeekDefaultModelId : moonshotDefaultModelId
+			mockUseRouterModels.mockReturnValue({
+				data: { [provider]: null },
+				isLoading: false,
+				isError: false,
+			} as any)
+			mockUseOpenRouterModelProviders.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+
+			const { result } = renderHook(() => useSelectedModel({ apiProvider: provider, apiModelId: modelId }), {
+				wrapper: createWrapper(),
+			})
+
+			expect(result.current.id).toBe(modelId)
+			expect(result.current.info).toBeDefined()
+		},
+	)
+
+	it("uses router data for Poe", () => {
+		const modelInfo: ModelInfo = { contextWindow: 42_000, supportsPromptCache: false }
+		mockUseRouterModels.mockReturnValue({
+			data: { [providerIdentifiers.poe]: { model: modelInfo } },
+			isLoading: false,
+			isError: false,
+		} as any)
+		mockUseOpenRouterModelProviders.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+
+		const { result } = renderHook(
+			() => useSelectedModel({ apiProvider: providerIdentifiers.poe, apiModelId: "model" }),
+			{ wrapper: createWrapper() },
+		)
+
+		expect(result.current.info).toEqual(modelInfo)
+	})
+
 	describe("OpenRouter provider merging", () => {
 		it("should merge base model info with specific provider info when both exist", () => {
 			const baseModelInfo: ModelInfo = {
@@ -1081,6 +1229,25 @@ describe("useSelectedModel", () => {
 	})
 
 	describe("Kimi Code provider", () => {
+		it("should use the Kimi Code default while router models are loading and no model is configured", () => {
+			mockUseRouterModels.mockReturnValue({
+				data: undefined,
+				isLoading: true,
+				isError: false,
+			} as any)
+
+			const apiConfiguration: ProviderSettings = {
+				apiProvider: providerIdentifiers.kimiCode,
+			}
+
+			const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper: createWrapper() })
+
+			expect(result.current.provider).toBe(providerIdentifiers.kimiCode)
+			expect(result.current.id).toBe("kimi-for-coding")
+			expect(result.current.info).toEqual(kimiCodeDefaultModelInfo)
+			expect(result.current.isLoading).toBe(true)
+		})
+
 		it("should resolve the configured model from router models", () => {
 			const modelInfo: ModelInfo = {
 				...kimiCodeDefaultModelInfo,
