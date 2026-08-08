@@ -10,10 +10,6 @@ import ApiOptions, { type ApiOptionsProps } from "../ApiOptions"
 
 type OpenRouterModelProvidersQueryResult = Pick<ReturnType<typeof useOpenRouterModelProviders>, "data">
 
-const { useOpenRouterModelProvidersMock } = vi.hoisted(() => ({
-	useOpenRouterModelProvidersMock: vi.fn<() => OpenRouterModelProvidersQueryResult>(() => ({ data: undefined })),
-}))
-
 type ChildrenProps = { children?: ReactNode }
 
 type VSCodeTextFieldMockProps = ChildrenProps &
@@ -27,6 +23,24 @@ type SearchableSelectMockProps = {
 	options: Array<{ value: string; label: string }>
 	"data-testid"?: string
 }
+
+type SelectMockProps = ChildrenProps & {
+	value?: string
+	onValueChange?: (value: string) => void
+}
+
+type UseSelectedModelReturn = { provider?: string; id?: string; info: Record<string, never> }
+
+const { useOpenRouterModelProvidersMock, useSelectedModelMock } = vi.hoisted(() => ({
+	useOpenRouterModelProvidersMock: vi.fn<() => OpenRouterModelProvidersQueryResult>(() => ({ data: undefined })),
+	useSelectedModelMock: vi.fn(
+		(configuration: ProviderSettings): UseSelectedModelReturn => ({
+			provider: configuration.apiProvider,
+			id: configuration.apiModelId,
+			info: {},
+		}),
+	),
+}))
 
 vi.mock("@src/context/ExtensionStateContext", () => ({
 	useExtensionState: () => ({
@@ -51,11 +65,7 @@ vi.mock("@src/components/ui/hooks/useOpenRouterModelProviders", () => ({
 }))
 
 vi.mock("@src/components/ui/hooks/useSelectedModel", () => ({
-	useSelectedModel: (configuration: ProviderSettings) => ({
-		provider: configuration.apiProvider,
-		id: configuration.apiModelId,
-		info: {},
-	}),
+	useSelectedModel: useSelectedModelMock,
 }))
 
 vi.mock("@src/components/ui/hooks/useLmStudioModels", () => ({
@@ -63,40 +73,40 @@ vi.mock("@src/components/ui/hooks/useLmStudioModels", () => ({
 }))
 
 vi.mock("../providers", () => {
-	const Provider = () => null
+	const provider = (testId: string) => () => <div data-testid={testId} />
 	return {
-		Anthropic: Provider,
-		Baseten: Provider,
-		Bedrock: Provider,
-		DeepSeek: Provider,
-		Gemini: Provider,
-		LMStudio: Provider,
-		LiteLLM: Provider,
-		Mistral: Provider,
-		Moonshot: Provider,
-		KimiCode: Provider,
-		Ollama: Provider,
-		OpenAI: Provider,
-		OpenAICompatible: Provider,
-		OpenAICodex: Provider,
-		OpenRouter: Provider,
-		Poe: Provider,
-		QwenCode: Provider,
-		Requesty: Provider,
-		SambaNova: Provider,
-		Unbound: Provider,
-		Vertex: Provider,
-		VSCodeLM: Provider,
-		XAI: Provider,
-		ZAi: Provider,
-		Fireworks: Provider,
-		Friendli: Provider,
-		VercelAiGateway: Provider,
-		OpenCodeGo: Provider,
-		Kenari: Provider,
-		ZooGateway: Provider,
-		MiniMax: Provider,
-		Mimo: Provider,
+		Anthropic: provider("provider-anthropic"),
+		Baseten: provider("provider-baseten"),
+		Bedrock: provider("provider-bedrock"),
+		DeepSeek: provider("provider-deepseek"),
+		Gemini: provider("provider-gemini"),
+		LMStudio: provider("provider-lmstudio"),
+		LiteLLM: provider("provider-litellm"),
+		Mistral: provider("provider-mistral"),
+		Moonshot: provider("provider-moonshot"),
+		KimiCode: provider("provider-kimi-code"),
+		Ollama: provider("provider-ollama"),
+		OpenAI: provider("provider-openai-native"),
+		OpenAICompatible: provider("provider-openai"),
+		OpenAICodex: provider("provider-openai-codex"),
+		OpenRouter: provider("provider-openrouter"),
+		Poe: provider("provider-poe"),
+		QwenCode: provider("provider-qwen-code"),
+		Requesty: provider("provider-requesty"),
+		SambaNova: provider("provider-sambanova"),
+		Unbound: provider("provider-unbound"),
+		Vertex: provider("provider-vertex"),
+		VSCodeLM: provider("provider-vscode-lm"),
+		XAI: provider("provider-xai"),
+		ZAi: provider("provider-zai"),
+		Fireworks: provider("provider-fireworks"),
+		Friendli: provider("provider-friendli"),
+		VercelAiGateway: provider("provider-vercel-ai-gateway"),
+		OpenCodeGo: provider("provider-opencode-go"),
+		Kenari: provider("provider-kenari"),
+		ZooGateway: provider("provider-zoo-gateway"),
+		MiniMax: provider("provider-minimax"),
+		Mimo: provider("provider-mimo"),
 	}
 })
 
@@ -104,7 +114,9 @@ vi.mock("../providers/BedrockCustomArn", () => ({
 	BedrockCustomArn: () => <div data-testid="bedrock-custom-arn" />,
 }))
 vi.mock("../ModelPicker", () => ({ ModelPicker: () => null }))
-vi.mock("../ApiErrorMessage", () => ({ ApiErrorMessage: () => null }))
+vi.mock("../ApiErrorMessage", () => ({
+	ApiErrorMessage: ({ errorMessage }: { errorMessage: string }) => <div>{String(errorMessage)}</div>,
+}))
 vi.mock("../ThinkingBudget", () => ({ ThinkingBudget: () => null }))
 vi.mock("../Verbosity", () => ({ Verbosity: () => null }))
 vi.mock("../TodoListSettingsControl", () => ({ TodoListSettingsControl: () => null }))
@@ -143,11 +155,17 @@ vi.mock("@/components/ui", () => ({
 	Collapsible: ({ children }: ChildrenProps) => <div>{children}</div>,
 	CollapsibleTrigger: ({ children }: ChildrenProps) => <div>{children}</div>,
 	CollapsibleContent: ({ children }: ChildrenProps) => <div>{children}</div>,
-	Select: ({ children }: ChildrenProps) => <div>{children}</div>,
-	SelectTrigger: ({ children }: ChildrenProps) => <div>{children}</div>,
+	Select: ({ value, onValueChange, children }: SelectMockProps) => (
+		<select data-testid="routing-select" value={value} onChange={(event) => onValueChange?.(event.target.value)}>
+			{children}
+		</select>
+	),
+	SelectTrigger: ({ children }: ChildrenProps) => <>{children}</>,
 	SelectValue: () => null,
-	SelectContent: ({ children }: ChildrenProps) => <div>{children}</div>,
-	SelectItem: ({ children }: ChildrenProps) => <div>{children}</div>,
+	SelectContent: ({ children }: ChildrenProps) => <>{children}</>,
+	SelectItem: ({ value, children }: { value?: string; children?: ReactNode }) => (
+		<option value={value}>{children}</option>
+	),
 }))
 
 const renderApiOptions = (props: Partial<ApiOptionsProps> = {}) =>
@@ -163,6 +181,15 @@ const renderApiOptions = (props: Partial<ApiOptionsProps> = {}) =>
 	)
 
 describe("ApiOptions interactions", () => {
+	beforeEach(() => {
+		useSelectedModelMock.mockImplementation((configuration: ProviderSettings) => ({
+			provider: configuration.apiProvider,
+			id: configuration.apiModelId,
+			info: {},
+		}))
+		useOpenRouterModelProvidersMock.mockImplementation(() => ({ data: undefined }))
+	})
+
 	afterEach(() => {
 		vi.useRealTimers()
 		vi.restoreAllMocks()
@@ -226,6 +253,46 @@ describe("ApiOptions interactions", () => {
 			expect(postMessage).toHaveBeenCalledWith(expectedMessage)
 		})
 
+		it("applies the header transform when requesting OpenAI models", () => {
+			vi.useFakeTimers()
+			const postMessage = vi.spyOn(vscode, "postMessage").mockImplementation(() => undefined)
+
+			renderApiOptions({
+				apiConfiguration: {
+					apiProvider: providerIdentifiers.openai,
+					openAiBaseUrl: "https://openai.example/v1",
+					openAiApiKey: "openai-key",
+					openAiHeaders: { "": "ignored", "X-Keep": " kept" },
+				},
+			})
+			act(() => vi.advanceTimersByTime(250))
+
+			expect(postMessage).toHaveBeenCalledWith({
+				type: "requestOpenAiModels",
+				values: {
+					baseUrl: "https://openai.example/v1",
+					apiKey: "openai-key",
+					customHeaders: {},
+					openAiHeaders: { "X-Keep": "kept" },
+				},
+			})
+		})
+
+		it("syncs processed custom headers into the configuration", () => {
+			vi.useFakeTimers()
+			const setApiConfigurationField = vi.fn()
+
+			// The empty header key is dropped by convertHeadersToObject, so the
+			// processed object differs from the stored one and the sync fires.
+			renderApiOptions({
+				apiConfiguration: { apiProvider: providerIdentifiers.openai, openAiHeaders: { "": "ignored" } },
+				setApiConfigurationField,
+			})
+			act(() => vi.advanceTimersByTime(300))
+
+			expect(setApiConfigurationField).toHaveBeenCalledWith("openAiHeaders", {}, false)
+		})
+
 		it("requests LM Studio models using its configured base URL", () => {
 			vi.useFakeTimers()
 			renderApiOptions({
@@ -255,6 +322,7 @@ describe("ApiOptions interactions", () => {
 	})
 
 	it.each([
+		providerIdentifiers.openrouter,
 		providerIdentifiers.requesty,
 		providerIdentifiers.unbound,
 		providerIdentifiers.anthropic,
@@ -263,7 +331,9 @@ describe("ApiOptions interactions", () => {
 		providerIdentifiers.mistral,
 		providerIdentifiers.baseten,
 		providerIdentifiers.bedrock,
+		providerIdentifiers.vertex,
 		providerIdentifiers.gemini,
+		providerIdentifiers.openai,
 		providerIdentifiers.lmstudio,
 		providerIdentifiers.deepseek,
 		providerIdentifiers.qwenCode,
@@ -271,18 +341,23 @@ describe("ApiOptions interactions", () => {
 		providerIdentifiers.kimiCode,
 		providerIdentifiers.minimax,
 		providerIdentifiers.mimo,
+		providerIdentifiers.vscodeLm,
 		providerIdentifiers.ollama,
+		providerIdentifiers.xai,
 		providerIdentifiers.litellm,
 		providerIdentifiers.sambanova,
 		providerIdentifiers.zai,
-		providerIdentifiers.xai,
-		providerIdentifiers.fireworks,
-		providerIdentifiers.friendli,
 		providerIdentifiers.vercelAiGateway,
 		providerIdentifiers.opencodeGo,
-	])("renders the canonical %s provider branch", (apiProvider) => {
-		const { unmount } = renderApiOptions({ apiConfiguration: { apiProvider } })
-		unmount()
+		providerIdentifiers.kenari,
+		providerIdentifiers.zooGateway,
+		providerIdentifiers.fireworks,
+		providerIdentifiers.friendli,
+		providerIdentifiers.poe,
+	])("renders the %s provider branch when selected", (apiProvider) => {
+		renderApiOptions({ apiConfiguration: { apiProvider } })
+
+		expect(screen.getByTestId(`provider-${apiProvider}`)).toBeInTheDocument()
 	})
 
 	it("clears parent validation errors for Zoo Gateway", () => {
@@ -290,6 +365,23 @@ describe("ApiOptions interactions", () => {
 		renderApiOptions({ apiConfiguration: { apiProvider: providerIdentifiers.zooGateway }, setErrorMessage })
 
 		expect(setErrorMessage).toHaveBeenCalledWith(undefined)
+	})
+
+	it("reports a validation error for a non-gateway provider with missing credentials", () => {
+		const setErrorMessage = vi.fn()
+		renderApiOptions({ apiConfiguration: { apiProvider: providerIdentifiers.anthropic }, setErrorMessage })
+
+		expect(setErrorMessage).toHaveBeenCalled()
+		expect(setErrorMessage.mock.calls[0][0]).toBeTruthy()
+	})
+
+	it("renders the current validation error message", () => {
+		renderApiOptions({
+			apiConfiguration: { apiProvider: providerIdentifiers.anthropic },
+			errorMessage: "settings:validation.apiKey",
+		})
+
+		expect(screen.getByText("settings:validation.apiKey")).toBeInTheDocument()
 	})
 
 	it("renders OpenRouter provider routing when provider metadata is available", () => {
@@ -305,6 +397,37 @@ describe("ApiOptions interactions", () => {
 		})
 
 		expect(screen.getByText("settings:providers.openRouter.providerRouting.title")).toBeInTheDocument()
+	})
+
+	it("updates the OpenRouter specific provider from the routing control", () => {
+		useOpenRouterModelProvidersMock.mockReturnValue({
+			data: { preferred: { label: "Preferred", contextWindow: 1, supportsPromptCache: false } },
+		})
+		const setApiConfigurationField = vi.fn()
+
+		renderApiOptions({
+			apiConfiguration: {
+				apiProvider: providerIdentifiers.openrouter,
+				openRouterModelId: "anthropic/claude-sonnet-4.5",
+			},
+			setApiConfigurationField,
+		})
+
+		fireEvent.change(screen.getByTestId("routing-select"), { target: { value: "preferred" } })
+		expect(setApiConfigurationField).toHaveBeenCalledWith("openRouterSpecificProvider", "preferred")
+	})
+
+	it("hides OpenRouter provider routing when no provider metadata is available", () => {
+		useOpenRouterModelProvidersMock.mockReturnValue({ data: {} })
+
+		renderApiOptions({
+			apiConfiguration: {
+				apiProvider: providerIdentifiers.openrouter,
+				openRouterModelId: "anthropic/claude-sonnet-4.5",
+			},
+		})
+
+		expect(screen.queryByTestId("routing-select")).not.toBeInTheDocument()
 	})
 
 	it("preserves the Bedrock custom ARN pseudo-model when switching to Bedrock", () => {
@@ -359,6 +482,18 @@ describe("ApiOptions interactions", () => {
 		)
 
 		expect(screen.queryByTestId("bedrock-custom-arn")).not.toBeInTheDocument()
+	})
+
+	it("syncs the selected model into the config when the model id differs", () => {
+		useSelectedModelMock.mockReturnValue({ provider: providerIdentifiers.anthropic, id: "claude-sonnet", info: {} })
+		const setApiConfigurationField = vi.fn()
+
+		renderApiOptions({
+			apiConfiguration: { apiProvider: providerIdentifiers.anthropic, apiModelId: "old-model" },
+			setApiConfigurationField,
+		})
+
+		expect(setApiConfigurationField).toHaveBeenCalledWith("apiModelId", "claude-sonnet", false)
 	})
 
 	it("updates the consecutive mistake limit from advanced settings", () => {
