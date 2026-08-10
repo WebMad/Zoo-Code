@@ -19,12 +19,15 @@ import {
 	friendliDefaultModelId,
 	friendliModels,
 	deepSeekDefaultModelId,
+	deepSeekModels,
 	openRouterDefaultModelId,
 	vscodeLlmModels,
 	vscodeLlmDefaultModelId,
 	moonshotDefaultModelId,
 	moonshotModels,
 	kimiCodeDefaultModelInfo,
+	lMStudioDefaultModelInfo,
+	opencodeGoDefaultModelInfo,
 	providerIdentifiers,
 	retiredProviderIdentifiers,
 } from "@roo-code/types"
@@ -59,6 +62,8 @@ const createWrapper = () => {
 
 describe("useSelectedModel", () => {
 	beforeEach(() => {
+		mockUseLmStudioModels.mockClear()
+		mockUseOllamaModels.mockClear()
 		mockUseLmStudioModels.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
 		mockUseOllamaModels.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
 	})
@@ -113,6 +118,53 @@ describe("useSelectedModel", () => {
 		)
 
 		expect(result.current.id).toBe("configured-model")
+		if (provider === providerIdentifiers.lmstudio) {
+			expect(mockUseLmStudioModels).toHaveBeenCalledWith("configured-model")
+		} else {
+			expect(mockUseOllamaModels).toHaveBeenCalledWith("configured-model")
+		}
+	})
+
+	it.each([
+		[providerIdentifiers.lmstudio, "lmStudioModelId", lMStudioDefaultModelInfo],
+		[providerIdentifiers.ollama, "ollamaModelId", undefined],
+	] as const)("applies local model metadata for %s", (provider, modelIdKey, defaultInfo) => {
+		const modelId = "configured-model"
+		const modelInfo: ModelInfo = {
+			maxTokens: 12_000,
+			contextWindow: 100_000,
+			supportsImages: false,
+			supportsPromptCache: false,
+		}
+		mockUseRouterModels.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+		mockUseOpenRouterModelProviders.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+		if (provider === providerIdentifiers.lmstudio) {
+			mockUseLmStudioModels.mockReturnValue({
+				data: { [modelId]: modelInfo },
+				isLoading: false,
+				isError: false,
+			} as any)
+		} else {
+			mockUseOllamaModels.mockReturnValue({
+				data: { [modelId]: modelInfo },
+				isLoading: false,
+				isError: false,
+			} as any)
+		}
+
+		const apiConfiguration = {
+			apiProvider: provider,
+			[modelIdKey]: modelId,
+			...(provider === providerIdentifiers.ollama ? { ollamaNumCtx: 32_000 } : {}),
+		} as ProviderSettings
+		const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper: createWrapper() })
+
+		expect(result.current.id).toBe(modelId)
+		expect(result.current.info).toEqual(
+			provider === providerIdentifiers.lmstudio
+				? { ...defaultInfo, ...modelInfo }
+				: { ...modelInfo, contextWindow: 32_000 },
+		)
 	})
 
 	it("falls back to the OpenRouter default for a retired provider", () => {
@@ -124,6 +176,7 @@ describe("useSelectedModel", () => {
 		})
 
 		expect(result.current.id).toBe(openRouterDefaultModelId)
+		expect(result.current.info).toBeUndefined()
 	})
 
 	it("uses OpenCode Go default model information when the router catalog is empty", () => {
@@ -138,14 +191,14 @@ describe("useSelectedModel", () => {
 			wrapper: createWrapper(),
 		})
 
-		expect(result.current.info).toBeDefined()
+		expect(result.current.info).toEqual(opencodeGoDefaultModelInfo)
 	})
 
 	it.each([providerIdentifiers.deepseek, providerIdentifiers.moonshot])(
 		"prefers router data over static data for %s",
 		(provider) => {
 			const modelInfo: ModelInfo = { contextWindow: 42_000, supportsPromptCache: false }
-			const modelId = provider === providerIdentifiers.deepseek ? deepSeekDefaultModelId : moonshotDefaultModelId
+			const modelId = provider === providerIdentifiers.deepseek ? "deepseek-v4-pro" : moonshotDefaultModelId
 			mockUseRouterModels.mockReturnValue({
 				data: { [provider]: { [modelId]: modelInfo } },
 				isLoading: false,
@@ -157,6 +210,7 @@ describe("useSelectedModel", () => {
 				wrapper: createWrapper(),
 			})
 
+			expect(result.current.id).toBe(modelId)
 			expect(result.current.info).toEqual(modelInfo)
 		},
 	)
@@ -177,7 +231,11 @@ describe("useSelectedModel", () => {
 			})
 
 			expect(result.current.id).toBe(modelId)
-			expect(result.current.info).toBeDefined()
+			if (provider === providerIdentifiers.deepseek) {
+				expect(result.current.info).toEqual(deepSeekModels[deepSeekDefaultModelId])
+			} else {
+				expect(result.current.info).toEqual(moonshotModels[modelId as keyof typeof moonshotModels])
+			}
 		},
 	)
 
@@ -1255,7 +1313,7 @@ describe("useSelectedModel", () => {
 			}
 
 			mockUseRouterModels.mockReturnValue({
-				data: { "kimi-code": { "kimi-for-coding": modelInfo } },
+				data: { [providerIdentifiers.kimiCode]: { "kimi-for-coding": modelInfo } },
 				isLoading: false,
 				isError: false,
 			} as any)
