@@ -1,4 +1,4 @@
-import { ANTHROPIC_API_PROTOCOL, OPENAI_API_PROTOCOL, providerIdentifiers } from "../index.js"
+import { ANTHROPIC_API_PROTOCOL, OPENAI_API_PROTOCOL, providerIdentifiers, providerNames } from "../index.js"
 import {
 	getApiProtocol,
 	OPEN_AI_CODEX_SERVICE_TIER_KEY,
@@ -7,6 +7,12 @@ import {
 	providerSettingsSchemaDiscriminated,
 } from "../provider-settings.js"
 import { OpenAiCodexServiceTier, OpenAiServiceTier } from "../model.js"
+
+describe("provider settings discriminated union", () => {
+	it.each(providerNames)("accepts the %s provider branch", (apiProvider) => {
+		expect(providerSettingsSchemaDiscriminated.safeParse({ apiProvider }).success).toBe(true)
+	})
+})
 
 describe("OpenAI Codex provider settings", () => {
 	it("preserves the Fast preference in general and provider-specific schemas", () => {

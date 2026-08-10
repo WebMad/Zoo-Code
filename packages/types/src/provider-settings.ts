@@ -8,6 +8,7 @@ import {
 	serviceTierSchema,
 } from "./model.js"
 import { codebaseIndexProviderSchema } from "./codebase-index.js"
+import type { UnionToIntersection } from "./type-fu.js"
 import {
 	providerIdentifiers,
 	retiredProviderIdentifiers,
@@ -160,10 +161,13 @@ export type ProviderNameWithRetired = z.infer<typeof providerNamesWithRetiredSch
  * ProviderSettingsEntry
  */
 
+const API_PROVIDER_FIELD = "apiProvider"
+const SETTINGS_SHAPE_FIELD = "settingsShape"
+
 export const providerSettingsEntrySchema = z.object({
 	id: z.string(),
 	name: z.string(),
-	apiProvider: providerNamesWithRetiredSchema.optional(),
+	[API_PROVIDER_FIELD]: providerNamesWithRetiredSchema.optional(),
 	modelId: z.string().optional(),
 })
 
@@ -173,7 +177,7 @@ export type ProviderSettingsEntry = z.infer<typeof providerSettingsEntrySchema>
  * ProviderSettings
  */
 
-const baseProviderSettingsSchema = z.object({
+const baseProviderSettingsShape = {
 	includeMaxTokens: z.boolean().optional(),
 	todoListEnabled: z.boolean().optional(),
 	modelTemperature: z.number().nullish(),
@@ -188,319 +192,543 @@ const baseProviderSettingsSchema = z.object({
 
 	// Model verbosity.
 	verbosity: verbosityLevelsSchema.optional(),
+}
+
+type ProviderModelIdAccessor = (settings: Record<string, unknown>) => string | undefined
+
+type TypedProviderModelIdAccessor<S extends z.ZodRawShape> = (settings: z.infer<z.ZodObject<S>>) => string | undefined
+
+const createProviderDefinition = <P extends ProviderName, S extends z.ZodRawShape>({
+	apiProvider,
+	schema,
+	getModelId,
+}: {
+	apiProvider: P
+	schema: S
+	getModelId: TypedProviderModelIdAccessor<S>
+}) => ({
+	apiProvider,
+	settingsShape: schema,
+	schema: z.object({
+		...schema,
+		[API_PROVIDER_FIELD]: z.literal(apiProvider),
+	}),
+	getModelId: ((settings) => getModelId(settings as z.infer<z.ZodObject<S>>)) satisfies ProviderModelIdAccessor,
 })
 
 // Several of the providers share common model config properties.
-const apiModelIdProviderModelSchema = baseProviderSettingsSchema.extend({
+const apiModelIdProviderModelShape = {
+	...baseProviderSettingsShape,
 	apiModelId: z.string().optional(),
+}
+
+const anthropicProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.anthropic,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		apiKey: z.string().optional(),
+		anthropicBaseUrl: z.string().optional(),
+		anthropicUseAuthToken: z.boolean().optional(),
+		anthropicBeta1MContext: z.boolean().optional(), // Enable 'context-1m-2025-08-07' beta for 1M context window.
+	},
 })
 
-const anthropicSchema = apiModelIdProviderModelSchema.extend({
-	apiKey: z.string().optional(),
-	anthropicBaseUrl: z.string().optional(),
-	anthropicUseAuthToken: z.boolean().optional(),
-	anthropicBeta1MContext: z.boolean().optional(), // Enable 'context-1m-2025-08-07' beta for 1M context window.
+const openRouterProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.openrouter,
+	getModelId: (settings) => settings.openRouterModelId,
+	schema: {
+		...baseProviderSettingsShape,
+		openRouterApiKey: z.string().optional(),
+		openRouterModelId: z.string().optional(),
+		openRouterBaseUrl: z.string().optional(),
+		openRouterSpecificProvider: z.string().optional(),
+	},
 })
 
-const openRouterSchema = baseProviderSettingsSchema.extend({
-	openRouterApiKey: z.string().optional(),
-	openRouterModelId: z.string().optional(),
-	openRouterBaseUrl: z.string().optional(),
-	openRouterSpecificProvider: z.string().optional(),
+const bedrockProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.bedrock,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		awsAccessKey: z.string().optional(),
+		awsSecretKey: z.string().optional(),
+		awsSessionToken: z.string().optional(),
+		awsRegion: z.string().optional(),
+		awsUseCrossRegionInference: z.boolean().optional(),
+		awsUseGlobalInference: z.boolean().optional(), // Enable Global Inference profile routing when supported
+		awsUsePromptCache: z.boolean().optional(),
+		awsProfile: z.string().optional(),
+		awsUseProfile: z.boolean().optional(),
+		awsApiKey: z.string().optional(),
+		awsUseApiKey: z.boolean().optional(),
+		awsCustomArn: z.string().optional(),
+		awsModelContextWindow: z.number().optional(),
+		awsBedrockEndpointEnabled: z.boolean().optional(),
+		awsBedrockEndpoint: z.string().optional(),
+		awsBedrock1MContext: z.boolean().optional(), // Enable 'context-1m-2025-08-07' beta for 1M context window.
+		awsBedrockServiceTier: z.enum(["STANDARD", "FLEX", "PRIORITY"]).optional(), // AWS Bedrock service tier selection
+	},
 })
 
-const bedrockSchema = apiModelIdProviderModelSchema.extend({
-	awsAccessKey: z.string().optional(),
-	awsSecretKey: z.string().optional(),
-	awsSessionToken: z.string().optional(),
-	awsRegion: z.string().optional(),
-	awsUseCrossRegionInference: z.boolean().optional(),
-	awsUseGlobalInference: z.boolean().optional(), // Enable Global Inference profile routing when supported
-	awsUsePromptCache: z.boolean().optional(),
-	awsProfile: z.string().optional(),
-	awsUseProfile: z.boolean().optional(),
-	awsApiKey: z.string().optional(),
-	awsUseApiKey: z.boolean().optional(),
-	awsCustomArn: z.string().optional(),
-	awsModelContextWindow: z.number().optional(),
-	awsBedrockEndpointEnabled: z.boolean().optional(),
-	awsBedrockEndpoint: z.string().optional(),
-	awsBedrock1MContext: z.boolean().optional(), // Enable 'context-1m-2025-08-07' beta for 1M context window.
-	awsBedrockServiceTier: z.enum(["STANDARD", "FLEX", "PRIORITY"]).optional(), // AWS Bedrock service tier selection
+const vertexProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.vertex,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		vertexKeyFile: z.string().optional(),
+		vertexJsonCredentials: z.string().optional(),
+		vertexProjectId: z.string().optional(),
+		vertexRegion: z.string().optional(),
+		vertex1MContext: z.boolean().optional(), // Enable 'context-1m-2025-08-07' beta for 1M context window.
+	},
 })
 
-const vertexSchema = apiModelIdProviderModelSchema.extend({
-	vertexKeyFile: z.string().optional(),
-	vertexJsonCredentials: z.string().optional(),
-	vertexProjectId: z.string().optional(),
-	vertexRegion: z.string().optional(),
-	vertex1MContext: z.boolean().optional(), // Enable 'context-1m-2025-08-07' beta for 1M context window.
+const openAiProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.openai,
+	getModelId: (settings) => settings.openAiModelId,
+	schema: {
+		...baseProviderSettingsShape,
+		openAiBaseUrl: z.string().optional(),
+		openAiApiKey: z.string().optional(),
+		openAiR1FormatEnabled: z.boolean().optional(),
+		openAiModelId: z.string().optional(),
+		openAiCustomModelInfo: modelInfoSchema.nullish(),
+		openAiUseAzure: z.boolean().optional(),
+		azureApiVersion: z.string().optional(),
+		openAiStreamingEnabled: z.boolean().optional(),
+		openAiHostHeader: z.string().optional(), // Keep temporarily for backward compatibility during migration.
+		openAiHeaders: z.record(z.string(), z.string()).optional(),
+	},
 })
 
-const openAiSchema = baseProviderSettingsSchema.extend({
-	openAiBaseUrl: z.string().optional(),
-	openAiApiKey: z.string().optional(),
-	openAiR1FormatEnabled: z.boolean().optional(),
-	openAiModelId: z.string().optional(),
-	openAiCustomModelInfo: modelInfoSchema.nullish(),
-	openAiUseAzure: z.boolean().optional(),
-	azureApiVersion: z.string().optional(),
-	openAiStreamingEnabled: z.boolean().optional(),
-	openAiHostHeader: z.string().optional(), // Keep temporarily for backward compatibility during migration.
-	openAiHeaders: z.record(z.string(), z.string()).optional(),
+const ollamaProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.ollama,
+	getModelId: (settings) => settings.ollamaModelId,
+	schema: {
+		...baseProviderSettingsShape,
+		ollamaModelId: z.string().optional(),
+		ollamaBaseUrl: z.string().optional(),
+		ollamaApiKey: z.string().optional(),
+		ollamaNumCtx: z.number().int().min(128).optional(),
+	},
 })
 
-const ollamaSchema = baseProviderSettingsSchema.extend({
-	ollamaModelId: z.string().optional(),
-	ollamaBaseUrl: z.string().optional(),
-	ollamaApiKey: z.string().optional(),
-	ollamaNumCtx: z.number().int().min(128).optional(),
+const vsCodeLmProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.vscodeLm,
+	getModelId: (settings) => settings.vsCodeLmModelSelector?.id,
+	schema: {
+		...baseProviderSettingsShape,
+		vsCodeLmModelSelector: z
+			.object({
+				vendor: z.string().optional(),
+				family: z.string().optional(),
+				version: z.string().optional(),
+				id: z.string().optional(),
+			})
+			.optional(),
+	},
 })
 
-const vsCodeLmSchema = baseProviderSettingsSchema.extend({
-	vsCodeLmModelSelector: z
-		.object({
-			vendor: z.string().optional(),
-			family: z.string().optional(),
-			version: z.string().optional(),
-			id: z.string().optional(),
-		})
-		.optional(),
+const lmStudioProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.lmstudio,
+	getModelId: (settings) => settings.lmStudioModelId,
+	schema: {
+		...baseProviderSettingsShape,
+		lmStudioModelId: z.string().optional(),
+		lmStudioBaseUrl: z.string().optional(),
+		lmStudioDraftModelId: z.string().optional(),
+		lmStudioSpeculativeDecodingEnabled: z.boolean().optional(),
+	},
 })
 
-const lmStudioSchema = baseProviderSettingsSchema.extend({
-	lmStudioModelId: z.string().optional(),
-	lmStudioBaseUrl: z.string().optional(),
-	lmStudioDraftModelId: z.string().optional(),
-	lmStudioSpeculativeDecodingEnabled: z.boolean().optional(),
+const geminiProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.gemini,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		geminiApiKey: z.string().optional(),
+		googleGeminiBaseUrl: z.string().optional(),
+	},
 })
 
-const geminiSchema = apiModelIdProviderModelSchema.extend({
-	geminiApiKey: z.string().optional(),
-	googleGeminiBaseUrl: z.string().optional(),
+const geminiCliProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.geminiCli,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		geminiCliOAuthPath: z.string().optional(),
+		geminiCliProjectId: z.string().optional(),
+	},
 })
 
-const geminiCliSchema = apiModelIdProviderModelSchema.extend({
-	geminiCliOAuthPath: z.string().optional(),
-	geminiCliProjectId: z.string().optional(),
+const openAiCodexProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.openaiCodex,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		// Codex "Fast" mode maps to the Responses API priority service tier.
+		[OPEN_AI_CODEX_SERVICE_TIER_KEY]: openAiCodexServiceTierSchema.optional(),
+	},
 })
 
-const openAiCodexSchema = apiModelIdProviderModelSchema.extend({
-	// Codex "Fast" mode maps to the Responses API priority service tier.
-	[OPEN_AI_CODEX_SERVICE_TIER_KEY]: openAiCodexServiceTierSchema.optional(),
+const openAiNativeProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.openaiNative,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		openAiNativeApiKey: z.string().optional(),
+		openAiNativeBaseUrl: z.string().optional(),
+		// OpenAI Responses API service tier for openai-native provider only.
+		// UI should only expose this when the selected model supports flex/priority.
+		openAiNativeServiceTier: serviceTierSchema.optional(),
+	},
 })
 
-const openAiNativeSchema = apiModelIdProviderModelSchema.extend({
-	openAiNativeApiKey: z.string().optional(),
-	openAiNativeBaseUrl: z.string().optional(),
-	// OpenAI Responses API service tier for openai-native provider only.
-	// UI should only expose this when the selected model supports flex/priority.
-	openAiNativeServiceTier: serviceTierSchema.optional(),
+const mistralProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.mistral,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		mistralApiKey: z.string().optional(),
+		mistralCodestralUrl: z.string().optional(),
+	},
 })
 
-const mistralSchema = apiModelIdProviderModelSchema.extend({
-	mistralApiKey: z.string().optional(),
-	mistralCodestralUrl: z.string().optional(),
+const deepSeekProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.deepseek,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		deepSeekBaseUrl: z.string().optional(),
+		deepSeekApiKey: z.string().optional(),
+	},
 })
 
-const deepSeekSchema = apiModelIdProviderModelSchema.extend({
-	deepSeekBaseUrl: z.string().optional(),
-	deepSeekApiKey: z.string().optional(),
+const poeProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.poe,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		poeApiKey: z.string().optional(),
+		poeBaseUrl: z.string().optional(),
+	},
 })
 
-const poeSchema = apiModelIdProviderModelSchema.extend({
-	poeApiKey: z.string().optional(),
-	poeBaseUrl: z.string().optional(),
-})
-
-const moonshotSchema = apiModelIdProviderModelSchema.extend({
-	moonshotBaseUrl: z
-		.union([z.literal("https://api.moonshot.ai/v1"), z.literal("https://api.moonshot.cn/v1")])
-		.optional(),
-	moonshotApiKey: z.string().optional(),
+const moonshotProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.moonshot,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		moonshotBaseUrl: z
+			.union([z.literal("https://api.moonshot.ai/v1"), z.literal("https://api.moonshot.cn/v1")])
+			.optional(),
+		moonshotApiKey: z.string().optional(),
+	},
 })
 
 export const kimiCodeAuthMethodSchema = z.enum(["oauth", "api-key"])
 export type KimiCodeAuthMethod = z.infer<typeof kimiCodeAuthMethodSchema>
 
-const kimiCodeSchema = apiModelIdProviderModelSchema.extend({
-	kimiCodeAuthMethod: kimiCodeAuthMethodSchema.optional(),
-	kimiCodeApiKey: z.string().optional(),
+const kimiCodeProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.kimiCode,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		kimiCodeAuthMethod: kimiCodeAuthMethodSchema.optional(),
+		kimiCodeApiKey: z.string().optional(),
+	},
 })
 
-const minimaxSchema = apiModelIdProviderModelSchema.extend({
-	minimaxBaseUrl: z
-		.union([z.literal("https://api.minimax.io/v1"), z.literal("https://api.minimaxi.com/v1")])
-		.optional(),
-	minimaxApiKey: z.string().optional(),
+const minimaxProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.minimax,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		minimaxBaseUrl: z
+			.union([z.literal("https://api.minimax.io/v1"), z.literal("https://api.minimaxi.com/v1")])
+			.optional(),
+		minimaxApiKey: z.string().optional(),
+	},
 })
 
-const mimoSchema = apiModelIdProviderModelSchema.extend({
-	mimoBaseUrl: z
-		.union([
-			z.literal("https://api.xiaomimimo.com/v1"),
-			z.literal("https://token-plan-cn.xiaomimimo.com/v1"),
-			z.literal("https://token-plan-sgp.xiaomimimo.com/v1"),
-			z.literal("https://token-plan-ams.xiaomimimo.com/v1"),
-		])
-		.optional(),
-	mimoApiKey: z.string().optional(),
+const mimoProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.mimo,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		mimoBaseUrl: z
+			.union([
+				z.literal("https://api.xiaomimimo.com/v1"),
+				z.literal("https://token-plan-cn.xiaomimimo.com/v1"),
+				z.literal("https://token-plan-sgp.xiaomimimo.com/v1"),
+				z.literal("https://token-plan-ams.xiaomimimo.com/v1"),
+			])
+			.optional(),
+		mimoApiKey: z.string().optional(),
+	},
 })
 
-const requestySchema = baseProviderSettingsSchema.extend({
-	requestyBaseUrl: z.string().optional(),
-	requestyApiKey: z.string().optional(),
-	requestyModelId: z.string().optional(),
+const requestyProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.requesty,
+	getModelId: (settings) => settings.requestyModelId,
+	schema: {
+		...baseProviderSettingsShape,
+		requestyBaseUrl: z.string().optional(),
+		requestyApiKey: z.string().optional(),
+		requestyModelId: z.string().optional(),
+	},
 })
 
-const unboundSchema = baseProviderSettingsSchema.extend({
-	unboundApiKey: z.string().optional(),
-	unboundModelId: z.string().optional(),
+const unboundProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.unbound,
+	getModelId: (settings) => settings.unboundModelId,
+	schema: {
+		...baseProviderSettingsShape,
+		unboundApiKey: z.string().optional(),
+		unboundModelId: z.string().optional(),
+	},
 })
 
-const fakeAiSchema = baseProviderSettingsSchema.extend({
-	fakeAi: z.unknown().optional(),
+const fakeAiProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.fakeAi,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		fakeAi: z.unknown().optional(),
+	},
 })
 
-const xaiSchema = apiModelIdProviderModelSchema.extend({
-	xaiApiKey: z.string().optional(),
+const xaiProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.xai,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		xaiApiKey: z.string().optional(),
+	},
 })
 
-const litellmSchema = baseProviderSettingsSchema.extend({
-	litellmBaseUrl: z.string().optional(),
-	litellmApiKey: z.string().optional(),
-	litellmModelId: z.string().optional(),
-	litellmUsePromptCache: z.boolean().optional(),
+const litellmProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.litellm,
+	getModelId: (settings) => settings.litellmModelId,
+	schema: {
+		...baseProviderSettingsShape,
+		litellmBaseUrl: z.string().optional(),
+		litellmApiKey: z.string().optional(),
+		litellmModelId: z.string().optional(),
+		litellmUsePromptCache: z.boolean().optional(),
+	},
 })
 
-const sambaNovaSchema = apiModelIdProviderModelSchema.extend({
-	sambaNovaApiKey: z.string().optional(),
+const sambaNovaProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.sambanova,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		sambaNovaApiKey: z.string().optional(),
+	},
 })
 
 export const zaiApiLineSchema = z.enum(["international_coding", "china_coding", "international_api", "china_api"])
 
 export type ZaiApiLine = z.infer<typeof zaiApiLineSchema>
 
-const zaiSchema = apiModelIdProviderModelSchema.extend({
-	zaiApiKey: z.string().optional(),
-	zaiApiLine: zaiApiLineSchema.optional(),
+const zaiProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.zai,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		zaiApiKey: z.string().optional(),
+		zaiApiLine: zaiApiLineSchema.optional(),
+	},
 })
 
-const fireworksSchema = apiModelIdProviderModelSchema.extend({
-	fireworksApiKey: z.string().optional(),
+const fireworksProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.fireworks,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		fireworksApiKey: z.string().optional(),
+	},
 })
 
-const friendliSchema = apiModelIdProviderModelSchema.extend({
-	friendliApiKey: z.string().optional(),
+const friendliProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.friendli,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		friendliApiKey: z.string().optional(),
+	},
 })
 
-const qwenCodeSchema = apiModelIdProviderModelSchema.extend({
-	qwenCodeOauthPath: z.string().optional(),
+const qwenCodeProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.qwenCode,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		qwenCodeOauthPath: z.string().optional(),
+	},
 })
 
-const vercelAiGatewaySchema = baseProviderSettingsSchema.extend({
-	vercelAiGatewayApiKey: z.string().optional(),
-	vercelAiGatewayModelId: z.string().optional(),
+const vercelAiGatewayProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.vercelAiGateway,
+	getModelId: (settings) => settings.vercelAiGatewayModelId,
+	schema: {
+		...baseProviderSettingsShape,
+		vercelAiGatewayApiKey: z.string().optional(),
+		vercelAiGatewayModelId: z.string().optional(),
+	},
 })
 
-const opencodeGoSchema = baseProviderSettingsSchema.extend({
-	opencodeGoApiKey: z.string().optional(),
-	opencodeGoModelId: z.string().optional(),
+const opencodeGoProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.opencodeGo,
+	getModelId: (settings) => settings.opencodeGoModelId,
+	schema: {
+		...baseProviderSettingsShape,
+		opencodeGoApiKey: z.string().optional(),
+		opencodeGoModelId: z.string().optional(),
+	},
 })
 
-const kenariSchema = baseProviderSettingsSchema.extend({
-	kenariApiKey: z.string().optional(),
-	kenariModelId: z.string().optional(),
+const kenariProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.kenari,
+	getModelId: (settings) => settings.kenariModelId,
+	schema: {
+		...baseProviderSettingsShape,
+		kenariApiKey: z.string().optional(),
+		kenariModelId: z.string().optional(),
+	},
 })
 
-const zooGatewaySchema = baseProviderSettingsSchema.extend({
-	zooSessionToken: z.string().optional(),
-	zooGatewayModelId: z.string().optional(),
-	zooGatewayBaseUrl: z.string().optional(),
+const zooGatewayProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.zooGateway,
+	getModelId: (settings) => settings.zooGatewayModelId,
+	schema: {
+		...baseProviderSettingsShape,
+		zooSessionToken: z.string().optional(),
+		zooGatewayModelId: z.string().optional(),
+		zooGatewayBaseUrl: z.string().optional(),
+	},
 })
 
-const basetenSchema = apiModelIdProviderModelSchema.extend({
-	basetenApiKey: z.string().optional(),
+const basetenProviderDefinition = createProviderDefinition({
+	apiProvider: providerIdentifiers.baseten,
+	getModelId: (settings) => settings.apiModelId,
+	schema: {
+		...apiModelIdProviderModelShape,
+		basetenApiKey: z.string().optional(),
+	},
 })
+
+type ProviderDefinition = {
+	apiProvider: ProviderName
+	settingsShape: z.ZodRawShape
+	schema: z.ZodDiscriminatedUnionOption<typeof API_PROVIDER_FIELD>
+	getModelId: ProviderModelIdAccessor
+}
+
+const providerDefinitionList = [
+	anthropicProviderDefinition,
+	openRouterProviderDefinition,
+	bedrockProviderDefinition,
+	vertexProviderDefinition,
+	openAiProviderDefinition,
+	ollamaProviderDefinition,
+	vsCodeLmProviderDefinition,
+	lmStudioProviderDefinition,
+	geminiProviderDefinition,
+	geminiCliProviderDefinition,
+	openAiCodexProviderDefinition,
+	openAiNativeProviderDefinition,
+	mistralProviderDefinition,
+	deepSeekProviderDefinition,
+	poeProviderDefinition,
+	moonshotProviderDefinition,
+	kimiCodeProviderDefinition,
+	minimaxProviderDefinition,
+	mimoProviderDefinition,
+	requestyProviderDefinition,
+	unboundProviderDefinition,
+	fakeAiProviderDefinition,
+	xaiProviderDefinition,
+	basetenProviderDefinition,
+	litellmProviderDefinition,
+	sambaNovaProviderDefinition,
+	zaiProviderDefinition,
+	fireworksProviderDefinition,
+	friendliProviderDefinition,
+	qwenCodeProviderDefinition,
+	vercelAiGatewayProviderDefinition,
+	opencodeGoProviderDefinition,
+	kenariProviderDefinition,
+	zooGatewayProviderDefinition,
+] as const satisfies readonly ProviderDefinition[]
+
+type ListedProvider = (typeof providerDefinitionList)[number][typeof API_PROVIDER_FIELD]
+const allProvidersAreDefined: Exclude<ProviderName, ListedProvider> extends never ? true : never = true
+void allProvidersAreDefined
+
+const indexProviderDefinitions = (
+	definitions: readonly ProviderDefinition[],
+): Partial<Record<ProviderName, ProviderDefinition>> => {
+	const indexedDefinitions: Partial<Record<ProviderName, ProviderDefinition>> = {}
+
+	for (const definition of definitions) {
+		if (indexedDefinitions[definition.apiProvider]) {
+			console.warn(`Duplicate provider definition ignored: ${definition.apiProvider}`)
+		}
+
+		indexedDefinitions[definition.apiProvider] ??= definition
+	}
+
+	for (const provider of providerNames) {
+		if (!indexedDefinitions[provider]) {
+			console.warn(`Missing provider definition: ${provider}`)
+		}
+	}
+
+	return indexedDefinitions
+}
+
+const providerDefinitions = indexProviderDefinitions(providerDefinitionList)
 
 const defaultSchema = z.object({
-	apiProvider: z.undefined(),
+	[API_PROVIDER_FIELD]: z.undefined(),
 })
 
-export const providerSettingsSchemaDiscriminated = z.discriminatedUnion("apiProvider", [
-	anthropicSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.anthropic) })),
-	openRouterSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.openrouter) })),
-	bedrockSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.bedrock) })),
-	vertexSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.vertex) })),
-	openAiSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.openai) })),
-	ollamaSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.ollama) })),
-	vsCodeLmSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.vscodeLm) })),
-	lmStudioSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.lmstudio) })),
-	geminiSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.gemini) })),
-	geminiCliSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.geminiCli) })),
-	openAiCodexSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.openaiCodex) })),
-	openAiNativeSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.openaiNative) })),
-	mistralSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.mistral) })),
-	deepSeekSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.deepseek) })),
-	poeSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.poe) })),
-	moonshotSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.moonshot) })),
-	kimiCodeSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.kimiCode) })),
-	minimaxSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.minimax) })),
-	mimoSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.mimo) })),
-	requestySchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.requesty) })),
-	unboundSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.unbound) })),
-	fakeAiSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.fakeAi) })),
-	xaiSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.xai) })),
-	basetenSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.baseten) })),
-	litellmSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.litellm) })),
-	sambaNovaSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.sambanova) })),
-	zaiSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.zai) })),
-	fireworksSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.fireworks) })),
-	friendliSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.friendli) })),
-	qwenCodeSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.qwenCode) })),
-	vercelAiGatewaySchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.vercelAiGateway) })),
-	opencodeGoSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.opencodeGo) })),
-	kenariSchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.kenari) })),
-	zooGatewaySchema.merge(z.object({ apiProvider: z.literal(providerIdentifiers.zooGateway) })),
+type ProviderDefinitionSchemas<D extends readonly ProviderDefinition[]> = {
+	[K in keyof D]: D[K]["schema"]
+}
+
+const getDiscriminatedSchemas = <const D extends readonly [ProviderDefinition, ...ProviderDefinition[]]>(
+	definitions: D,
+): ProviderDefinitionSchemas<D> => {
+	const [firstDefinition, ...remainingDefinitions] = definitions
+	return [
+		firstDefinition.schema,
+		...remainingDefinitions.map((definition) => definition.schema),
+	] as ProviderDefinitionSchemas<D>
+}
+
+const providerDiscriminatedSchemas = getDiscriminatedSchemas(providerDefinitionList)
+
+export const providerSettingsSchemaDiscriminated = z.discriminatedUnion(API_PROVIDER_FIELD, [
+	...providerDiscriminatedSchemas,
 	defaultSchema,
 ])
 
+type ProviderSettingsShape = UnionToIntersection<(typeof providerDefinitionList)[number][typeof SETTINGS_SHAPE_FIELD]>
+
+const providerSettingsObjectSchema = providerDefinitionList.reduce<z.AnyZodObject>(
+	(schema, definition) => schema.merge(z.object(definition[SETTINGS_SHAPE_FIELD])),
+	z.object({}),
+)
+
+const providerSettingsShape = providerSettingsObjectSchema.shape as ProviderSettingsShape
+
 export const providerSettingsSchema = z.object({
-	apiProvider: providerNamesWithRetiredSchema.optional(),
-	...anthropicSchema.shape,
-	...openRouterSchema.shape,
-	...bedrockSchema.shape,
-	...vertexSchema.shape,
-	...openAiSchema.shape,
-	...ollamaSchema.shape,
-	...vsCodeLmSchema.shape,
-	...lmStudioSchema.shape,
-	...geminiSchema.shape,
-	...geminiCliSchema.shape,
-	...openAiCodexSchema.shape,
-	...openAiNativeSchema.shape,
-	...mistralSchema.shape,
-	...deepSeekSchema.shape,
-	...poeSchema.shape,
-	...moonshotSchema.shape,
-	...kimiCodeSchema.shape,
-	...minimaxSchema.shape,
-	...mimoSchema.shape,
-	...requestySchema.shape,
-	...unboundSchema.shape,
-	...fakeAiSchema.shape,
-	...xaiSchema.shape,
-	...basetenSchema.shape,
-	...litellmSchema.shape,
-	...sambaNovaSchema.shape,
-	...zaiSchema.shape,
-	...fireworksSchema.shape,
-	...friendliSchema.shape,
-	...qwenCodeSchema.shape,
-	...vercelAiGatewaySchema.shape,
-	...opencodeGoSchema.shape,
-	...kenariSchema.shape,
-	...zooGatewaySchema.shape,
+	[API_PROVIDER_FIELD]: providerNamesWithRetiredSchema.optional(),
+	...providerSettingsShape,
 	...codebaseIndexProviderSchema.shape,
 })
 
@@ -516,74 +744,12 @@ export type ProviderSettingsWithId = z.infer<typeof providerSettingsWithIdSchema
 
 export const PROVIDER_SETTINGS_KEYS = providerSettingsSchema.keyof().options
 
-/**
- * ModelIdKey
- */
+export function getModelId(settings: ProviderSettings): string | undefined {
+	if (!isProviderName(settings.apiProvider)) {
+		return undefined
+	}
 
-export const modelIdKeys = [
-	"apiModelId",
-	"openRouterModelId",
-	"openAiModelId",
-	"ollamaModelId",
-	"lmStudioModelId",
-	"lmStudioDraftModelId",
-	"requestyModelId",
-	"unboundModelId",
-	"litellmModelId",
-	"vercelAiGatewayModelId",
-	"opencodeGoModelId",
-	"kenariModelId",
-	"zooGatewayModelId",
-] as const satisfies readonly (keyof ProviderSettings)[]
-
-export type ModelIdKey = (typeof modelIdKeys)[number]
-
-export const getModelId = (settings: ProviderSettings): string | undefined => {
-	const modelIdKey = modelIdKeys.find((key) => settings[key])
-	return modelIdKey ? settings[modelIdKey] : undefined
-}
-
-/**
- * TypicalProvider
- */
-
-export type TypicalProvider = Exclude<ProviderName, InternalProvider | CustomProvider | FauxProvider>
-
-export const isTypicalProvider = (key: unknown): key is TypicalProvider =>
-	isProviderName(key) && !isInternalProvider(key) && !isCustomProvider(key) && !isFauxProvider(key)
-
-export const modelIdKeysByProvider: Record<TypicalProvider, ModelIdKey> = {
-	[providerIdentifiers.anthropic]: "apiModelId",
-	[providerIdentifiers.openrouter]: "openRouterModelId",
-	[providerIdentifiers.bedrock]: "apiModelId",
-	[providerIdentifiers.vertex]: "apiModelId",
-	[providerIdentifiers.openaiCodex]: "apiModelId",
-	[providerIdentifiers.openaiNative]: "openAiModelId",
-	[providerIdentifiers.ollama]: "ollamaModelId",
-	[providerIdentifiers.lmstudio]: "lmStudioModelId",
-	[providerIdentifiers.gemini]: "apiModelId",
-	[providerIdentifiers.geminiCli]: "apiModelId",
-	[providerIdentifiers.mistral]: "apiModelId",
-	[providerIdentifiers.moonshot]: "apiModelId",
-	[providerIdentifiers.kimiCode]: "apiModelId",
-	[providerIdentifiers.minimax]: "apiModelId",
-	[providerIdentifiers.mimo]: "apiModelId",
-	[providerIdentifiers.deepseek]: "apiModelId",
-	[providerIdentifiers.poe]: "apiModelId",
-	[providerIdentifiers.qwenCode]: "apiModelId",
-	[providerIdentifiers.requesty]: "requestyModelId",
-	[providerIdentifiers.unbound]: "unboundModelId",
-	[providerIdentifiers.xai]: "apiModelId",
-	[providerIdentifiers.baseten]: "apiModelId",
-	[providerIdentifiers.litellm]: "litellmModelId",
-	[providerIdentifiers.sambanova]: "apiModelId",
-	[providerIdentifiers.zai]: "apiModelId",
-	[providerIdentifiers.fireworks]: "apiModelId",
-	[providerIdentifiers.friendli]: "apiModelId",
-	[providerIdentifiers.vercelAiGateway]: "vercelAiGatewayModelId",
-	[providerIdentifiers.opencodeGo]: "opencodeGoModelId",
-	[providerIdentifiers.kenari]: "kenariModelId",
-	[providerIdentifiers.zooGateway]: "zooGatewayModelId",
+	return providerDefinitions[settings.apiProvider]?.getModelId(settings)
 }
 
 /**
