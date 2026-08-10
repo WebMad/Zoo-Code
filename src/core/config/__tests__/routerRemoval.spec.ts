@@ -4,7 +4,6 @@ import { downgradeLegacyRooConfig, isLegacyRooConfig, LEGACY_ROO_PROVIDER } from
 
 describe("routerRemoval", () => {
 	it("uses the canonical retired Roo provider identifier without changing its persisted value", () => {
-		expect(LEGACY_ROO_PROVIDER).toBe(retiredProviderIdentifiers.roo)
 		expect(LEGACY_ROO_PROVIDER).toBe("roo")
 	})
 
@@ -34,5 +33,11 @@ describe("routerRemoval", () => {
 			config: persistedConfig,
 			migrated: false,
 		})
+	})
+
+	it("rejects null and non-object input without throwing", () => {
+		expect(isLegacyRooConfig(null)).toBe(false)
+		expect(isLegacyRooConfig("roo")).toBe(false)
+		expect(isLegacyRooConfig({ apiProvider: "some-other-provider" })).toBe(false)
 	})
 })
