@@ -8,6 +8,8 @@ import type { Mock } from "vitest"
 import {
 	ProviderSettings,
 	ModelInfo,
+	type ModelRecord,
+	type RouterModels,
 	anthropicModels,
 	BEDROCK_1M_CONTEXT_MODEL_IDS,
 	litellmDefaultModelInfo,
@@ -48,6 +50,32 @@ const mockUseOpenRouterModelProviders = useOpenRouterModelProviders as Mock<type
 const mockUseLmStudioModels = useLmStudioModels as Mock<typeof useLmStudioModels>
 const mockUseOllamaModels = useOllamaModels as Mock<typeof useOllamaModels>
 
+type TestRouterModels = Partial<Record<keyof RouterModels, ModelRecord | null>>
+type QueryResultOptions = { isLoading?: boolean; isError?: boolean }
+
+const createQueryResult = <TData>(data: TData, options: QueryResultOptions = {}) => ({
+	data,
+	isLoading: options.isLoading ?? false,
+	isError: options.isError ?? false,
+})
+
+// React Query exposes a discriminated union with additional runtime fields; these tests only need the stable query state fields.
+const createRouterModelsResult = (
+	data: TestRouterModels | undefined,
+	options?: QueryResultOptions,
+): ReturnType<typeof useRouterModels> => createQueryResult(data, options) as ReturnType<typeof useRouterModels>
+
+const createOpenRouterModelProvidersResult = (
+	data: Record<string, ModelInfo> | undefined,
+	options?: QueryResultOptions,
+): ReturnType<typeof useOpenRouterModelProviders> =>
+	createQueryResult(data, options) as ReturnType<typeof useOpenRouterModelProviders>
+
+const createLocalModelsResult = (
+	data: ModelRecord | undefined,
+	options?: QueryResultOptions,
+): ReturnType<typeof useLmStudioModels> => createQueryResult(data, options) as ReturnType<typeof useLmStudioModels>
+
 const createWrapper = () => {
 	const queryClient = new QueryClient({
 		defaultOptions: {
@@ -64,8 +92,8 @@ describe("useSelectedModel", () => {
 	beforeEach(() => {
 		mockUseLmStudioModels.mockClear()
 		mockUseOllamaModels.mockClear()
-		mockUseLmStudioModels.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
-		mockUseOllamaModels.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+		mockUseLmStudioModels.mockReturnValue(createLocalModelsResult({}))
+		mockUseOllamaModels.mockReturnValue(createLocalModelsResult({}))
 	})
 
 	const dynamicProviderCases = [
@@ -75,15 +103,12 @@ describe("useSelectedModel", () => {
 		[providerIdentifiers.opencodeGo, "opencodeGoModelId"],
 		[providerIdentifiers.zooGateway, "zooGatewayModelId"],
 	] as const
+	const configuredModelInfo: ModelInfo = { contextWindow: 1, supportsPromptCache: false }
 
 	it.each(dynamicProviderCases)("uses router data for %s", (provider, modelIdKey) => {
 		const modelInfo: ModelInfo = { contextWindow: 42_000, supportsPromptCache: false }
-		mockUseRouterModels.mockReturnValue({
-			data: { [provider]: { model: modelInfo } },
-			isLoading: false,
-			isError: false,
-		} as any)
-		mockUseOpenRouterModelProviders.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+		mockUseRouterModels.mockReturnValue(createRouterModelsResult({ [provider]: { model: modelInfo } }))
+		mockUseOpenRouterModelProviders.mockReturnValue(createOpenRouterModelProvidersResult({}))
 
 		const apiConfiguration = {
 			apiProvider: provider,
@@ -99,18 +124,10 @@ describe("useSelectedModel", () => {
 		[providerIdentifiers.lmstudio, "lmStudioModelId"],
 		[providerIdentifiers.ollama, "ollamaModelId"],
 	] as const)("passes the configured model ID to the %s model hook", (provider, modelIdKey) => {
-		mockUseRouterModels.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
-		mockUseOpenRouterModelProviders.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
-		mockUseLmStudioModels.mockReturnValue({
-			data: { "configured-model": {} },
-			isLoading: false,
-			isError: false,
-		} as any)
-		mockUseOllamaModels.mockReturnValue({
-			data: { "configured-model": {} },
-			isLoading: false,
-			isError: false,
-		} as any)
+		mockUseRouterModels.mockReturnValue(createRouterModelsResult({}))
+		mockUseOpenRouterModelProviders.mockReturnValue(createOpenRouterModelProvidersResult({}))
+		mockUseLmStudioModels.mockReturnValue(createLocalModelsResult({ "configured-model": configuredModelInfo }))
+		mockUseOllamaModels.mockReturnValue(createLocalModelsResult({ "configured-model": configuredModelInfo }))
 
 		const { result } = renderHook(
 			() => useSelectedModel({ apiProvider: provider, [modelIdKey]: "configured-model" }),
@@ -136,20 +153,12 @@ describe("useSelectedModel", () => {
 			supportsImages: false,
 			supportsPromptCache: false,
 		}
-		mockUseRouterModels.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
-		mockUseOpenRouterModelProviders.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+		mockUseRouterModels.mockReturnValue(createRouterModelsResult({}))
+		mockUseOpenRouterModelProviders.mockReturnValue(createOpenRouterModelProvidersResult({}))
 		if (provider === providerIdentifiers.lmstudio) {
-			mockUseLmStudioModels.mockReturnValue({
-				data: { [modelId]: modelInfo },
-				isLoading: false,
-				isError: false,
-			} as any)
+			mockUseLmStudioModels.mockReturnValue(createLocalModelsResult({ [modelId]: modelInfo }))
 		} else {
-			mockUseOllamaModels.mockReturnValue({
-				data: { [modelId]: modelInfo },
-				isLoading: false,
-				isError: false,
-			} as any)
+			mockUseOllamaModels.mockReturnValue(createLocalModelsResult({ [modelId]: modelInfo }))
 		}
 
 		const apiConfiguration = {
@@ -168,8 +177,8 @@ describe("useSelectedModel", () => {
 	})
 
 	it("falls back to the OpenRouter default for a retired provider", () => {
-		mockUseRouterModels.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
-		mockUseOpenRouterModelProviders.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+		mockUseRouterModels.mockReturnValue(createRouterModelsResult({}))
+		mockUseOpenRouterModelProviders.mockReturnValue(createOpenRouterModelProvidersResult({}))
 
 		const { result } = renderHook(() => useSelectedModel({ apiProvider: retiredProviderIdentifiers.cerebras }), {
 			wrapper: createWrapper(),
@@ -180,12 +189,8 @@ describe("useSelectedModel", () => {
 	})
 
 	it("uses OpenCode Go default model information when the router catalog is empty", () => {
-		mockUseRouterModels.mockReturnValue({
-			data: { [providerIdentifiers.opencodeGo]: {} },
-			isLoading: false,
-			isError: false,
-		} as any)
-		mockUseOpenRouterModelProviders.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+		mockUseRouterModels.mockReturnValue(createRouterModelsResult({ [providerIdentifiers.opencodeGo]: {} }))
+		mockUseOpenRouterModelProviders.mockReturnValue(createOpenRouterModelProvidersResult({}))
 
 		const { result } = renderHook(() => useSelectedModel({ apiProvider: providerIdentifiers.opencodeGo }), {
 			wrapper: createWrapper(),
@@ -199,12 +204,8 @@ describe("useSelectedModel", () => {
 		(provider) => {
 			const modelInfo: ModelInfo = { contextWindow: 42_000, supportsPromptCache: false }
 			const modelId = provider === providerIdentifiers.deepseek ? "deepseek-v4-pro" : moonshotDefaultModelId
-			mockUseRouterModels.mockReturnValue({
-				data: { [provider]: { [modelId]: modelInfo } },
-				isLoading: false,
-				isError: false,
-			} as any)
-			mockUseOpenRouterModelProviders.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+			mockUseRouterModels.mockReturnValue(createRouterModelsResult({ [provider]: { [modelId]: modelInfo } }))
+			mockUseOpenRouterModelProviders.mockReturnValue(createOpenRouterModelProvidersResult({}))
 
 			const { result } = renderHook(() => useSelectedModel({ apiProvider: provider, apiModelId: modelId }), {
 				wrapper: createWrapper(),
@@ -219,12 +220,8 @@ describe("useSelectedModel", () => {
 		"falls back to static data when the %s router catalog is null",
 		(provider) => {
 			const modelId = provider === providerIdentifiers.deepseek ? deepSeekDefaultModelId : moonshotDefaultModelId
-			mockUseRouterModels.mockReturnValue({
-				data: { [provider]: null },
-				isLoading: false,
-				isError: false,
-			} as any)
-			mockUseOpenRouterModelProviders.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+			mockUseRouterModels.mockReturnValue(createRouterModelsResult({ [provider]: null }))
+			mockUseOpenRouterModelProviders.mockReturnValue(createOpenRouterModelProvidersResult({}))
 
 			const { result } = renderHook(() => useSelectedModel({ apiProvider: provider, apiModelId: modelId }), {
 				wrapper: createWrapper(),
@@ -241,12 +238,10 @@ describe("useSelectedModel", () => {
 
 	it("uses router data for Poe", () => {
 		const modelInfo: ModelInfo = { contextWindow: 42_000, supportsPromptCache: false }
-		mockUseRouterModels.mockReturnValue({
-			data: { [providerIdentifiers.poe]: { model: modelInfo } },
-			isLoading: false,
-			isError: false,
-		} as any)
-		mockUseOpenRouterModelProviders.mockReturnValue({ data: {}, isLoading: false, isError: false } as any)
+		mockUseRouterModels.mockReturnValue(
+			createRouterModelsResult({ [providerIdentifiers.poe]: { model: modelInfo } }),
+		)
+		mockUseOpenRouterModelProviders.mockReturnValue(createOpenRouterModelProvidersResult({}))
 
 		const { result } = renderHook(
 			() => useSelectedModel({ apiProvider: providerIdentifiers.poe, apiModelId: "model" }),
@@ -1288,11 +1283,7 @@ describe("useSelectedModel", () => {
 
 	describe("Kimi Code provider", () => {
 		it("should use the Kimi Code default while router models are loading and no model is configured", () => {
-			mockUseRouterModels.mockReturnValue({
-				data: undefined,
-				isLoading: true,
-				isError: false,
-			} as any)
+			mockUseRouterModels.mockReturnValue(createRouterModelsResult(undefined, { isLoading: true }))
 
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: providerIdentifiers.kimiCode,
@@ -1312,11 +1303,9 @@ describe("useSelectedModel", () => {
 				description: "Configured Kimi Code model",
 			}
 
-			mockUseRouterModels.mockReturnValue({
-				data: { [providerIdentifiers.kimiCode]: { "kimi-for-coding": modelInfo } },
-				isLoading: false,
-				isError: false,
-			} as any)
+			mockUseRouterModels.mockReturnValue(
+				createRouterModelsResult({ [providerIdentifiers.kimiCode]: { "kimi-for-coding": modelInfo } }),
+			)
 
 			const apiConfiguration: ProviderSettings = {
 				apiProvider: providerIdentifiers.kimiCode,
