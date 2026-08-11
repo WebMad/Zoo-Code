@@ -744,12 +744,89 @@ export type ProviderSettingsWithId = z.infer<typeof providerSettingsWithIdSchema
 
 export const PROVIDER_SETTINGS_KEYS = providerSettingsSchema.keyof().options
 
+/**
+ * @deprecated Use `getModelId()` to resolve the model ID for the active provider.
+ */
+export const modelIdKeys = [
+	"apiModelId",
+	"openRouterModelId",
+	"openAiModelId",
+	"ollamaModelId",
+	"lmStudioModelId",
+	"lmStudioDraftModelId",
+	"requestyModelId",
+	"unboundModelId",
+	"litellmModelId",
+	"vercelAiGatewayModelId",
+	"opencodeGoModelId",
+	"kenariModelId",
+	"zooGatewayModelId",
+] as const satisfies readonly (keyof ProviderSettings)[]
+
+/**
+ * @deprecated Use `getModelId()` to resolve the model ID for the active provider.
+ */
+export type ModelIdKey = (typeof modelIdKeys)[number]
+
+/**
+ * @deprecated Provider categories should use the specific provider type guards.
+ */
+export type TypicalProvider = Exclude<ProviderName, InternalProvider | CustomProvider | FauxProvider>
+
+/**
+ * @deprecated Use the specific provider type guards instead.
+ */
+export const isTypicalProvider = (key: unknown): key is TypicalProvider =>
+	isProviderName(key) && !isInternalProvider(key) && !isCustomProvider(key) && !isFauxProvider(key)
+
+/**
+ * @deprecated Use `getModelId()` instead. This map is retained for API compatibility.
+ */
+export const modelIdKeysByProvider: Record<TypicalProvider, ModelIdKey> = {
+	[providerIdentifiers.anthropic]: "apiModelId",
+	[providerIdentifiers.openrouter]: "openRouterModelId",
+	[providerIdentifiers.bedrock]: "apiModelId",
+	[providerIdentifiers.vertex]: "apiModelId",
+	[providerIdentifiers.openaiCodex]: "apiModelId",
+	[providerIdentifiers.openaiNative]: "apiModelId",
+	[providerIdentifiers.ollama]: "ollamaModelId",
+	[providerIdentifiers.lmstudio]: "lmStudioModelId",
+	[providerIdentifiers.gemini]: "apiModelId",
+	[providerIdentifiers.geminiCli]: "apiModelId",
+	[providerIdentifiers.mistral]: "apiModelId",
+	[providerIdentifiers.moonshot]: "apiModelId",
+	[providerIdentifiers.kimiCode]: "apiModelId",
+	[providerIdentifiers.minimax]: "apiModelId",
+	[providerIdentifiers.mimo]: "apiModelId",
+	[providerIdentifiers.deepseek]: "apiModelId",
+	[providerIdentifiers.poe]: "apiModelId",
+	[providerIdentifiers.qwenCode]: "apiModelId",
+	[providerIdentifiers.requesty]: "requestyModelId",
+	[providerIdentifiers.unbound]: "unboundModelId",
+	[providerIdentifiers.xai]: "apiModelId",
+	[providerIdentifiers.baseten]: "apiModelId",
+	[providerIdentifiers.litellm]: "litellmModelId",
+	[providerIdentifiers.sambanova]: "apiModelId",
+	[providerIdentifiers.zai]: "apiModelId",
+	[providerIdentifiers.fireworks]: "apiModelId",
+	[providerIdentifiers.friendli]: "apiModelId",
+	[providerIdentifiers.vercelAiGateway]: "vercelAiGatewayModelId",
+	[providerIdentifiers.opencodeGo]: "opencodeGoModelId",
+	[providerIdentifiers.kenari]: "kenariModelId",
+	[providerIdentifiers.zooGateway]: "zooGatewayModelId",
+}
+
 export function getModelId(settings: ProviderSettings): string | undefined {
-	if (!isProviderName(settings.apiProvider)) {
-		return undefined
+	if (isProviderName(settings.apiProvider)) {
+		return providerDefinitions[settings.apiProvider]?.getModelId(settings)
 	}
 
-	return providerDefinitions[settings.apiProvider]?.getModelId(settings)
+	if (typeof settings.apiProvider === "string" && isRetiredProvider(settings.apiProvider)) {
+		const modelIdKey = modelIdKeys.find((key) => settings[key])
+		return modelIdKey ? settings[modelIdKey] : undefined
+	}
+
+	return undefined
 }
 
 /**
