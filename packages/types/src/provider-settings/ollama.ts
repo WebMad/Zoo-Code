@@ -1,12 +1,9 @@
 import { z } from "zod"
 
 import { providerIdentifiers } from "../provider-identifiers.js"
-import {
-	OLLAMA_MODEL_ID_FIELD,
-	baseProviderSettingsShape,
-	createModelIdAccessor,
-	createProviderDefinition,
-} from "./common.js"
+import { baseProviderSettingsShape, createModelIdAccessor, createProviderDefinition } from "./common.js"
+
+export const OLLAMA_MODEL_ID_FIELD = "ollamaModelId"
 
 export const ollamaProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.ollama,

@@ -2,11 +2,12 @@ import { providerIdentifiers } from "../provider-identifiers.js"
 import { openAiCodexServiceTierSchema } from "../model.js"
 import {
 	API_MODEL_ID_FIELD,
-	OPEN_AI_CODEX_SERVICE_TIER_KEY,
 	apiModelIdProviderModelShape,
 	createModelIdAccessor,
 	createProviderDefinition,
 } from "./common.js"
+
+export const OPEN_AI_CODEX_SERVICE_TIER_KEY = "openAiCodexServiceTier"
 
 export const openAiCodexProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.openaiCodex,

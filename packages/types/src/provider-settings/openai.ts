@@ -2,12 +2,9 @@ import { z } from "zod"
 
 import { providerIdentifiers } from "../provider-identifiers.js"
 import { modelInfoSchema } from "../model.js"
-import {
-	OPEN_AI_MODEL_ID_FIELD,
-	baseProviderSettingsShape,
-	createModelIdAccessor,
-	createProviderDefinition,
-} from "./common.js"
+import { baseProviderSettingsShape, createModelIdAccessor, createProviderDefinition } from "./common.js"
+
+export const OPEN_AI_MODEL_ID_FIELD = "openAiModelId"
 
 export const openAiProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.openai,

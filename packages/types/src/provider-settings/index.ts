@@ -35,7 +35,7 @@ import { basetenProviderDefinition } from "./baseten.js"
 
 import type { ProviderDefinition } from "./common.js"
 
-export { OPEN_AI_CODEX_SERVICE_TIER_KEY } from "./common.js"
+export { OPEN_AI_CODEX_SERVICE_TIER_KEY } from "./openai-codex.js"
 export { kimiCodeAuthMethodSchema, type KimiCodeAuthMethod } from "./kimi-code.js"
 export { zaiApiLineSchema, type ZaiApiLine } from "./zai.js"
 export type { ProviderDefinition } from "./common.js"

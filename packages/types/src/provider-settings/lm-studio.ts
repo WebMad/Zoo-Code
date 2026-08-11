@@ -1,12 +1,9 @@
 import { z } from "zod"
 
 import { providerIdentifiers } from "../provider-identifiers.js"
-import {
-	LM_STUDIO_MODEL_ID_FIELD,
-	baseProviderSettingsShape,
-	createModelIdAccessor,
-	createProviderDefinition,
-} from "./common.js"
+import { baseProviderSettingsShape, createModelIdAccessor, createProviderDefinition } from "./common.js"
+
+export const LM_STUDIO_MODEL_ID_FIELD = "lmStudioModelId"
 
 export const lmStudioProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.lmstudio,

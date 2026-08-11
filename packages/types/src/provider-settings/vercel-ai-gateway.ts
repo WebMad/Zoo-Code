@@ -1,12 +1,9 @@
 import { z } from "zod"
 
 import { providerIdentifiers } from "../provider-identifiers.js"
-import {
-	VERCEL_AI_GATEWAY_MODEL_ID_FIELD,
-	baseProviderSettingsShape,
-	createModelIdAccessor,
-	createProviderDefinition,
-} from "./common.js"
+import { baseProviderSettingsShape, createModelIdAccessor, createProviderDefinition } from "./common.js"
+
+export const VERCEL_AI_GATEWAY_MODEL_ID_FIELD = "vercelAiGatewayModelId"
 
 export const vercelAiGatewayProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.vercelAiGateway,

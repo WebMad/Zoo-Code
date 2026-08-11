@@ -1,12 +1,9 @@
 import { z } from "zod"
 
 import { providerIdentifiers } from "../provider-identifiers.js"
-import {
-	REQUESTY_MODEL_ID_FIELD,
-	baseProviderSettingsShape,
-	createModelIdAccessor,
-	createProviderDefinition,
-} from "./common.js"
+import { baseProviderSettingsShape, createModelIdAccessor, createProviderDefinition } from "./common.js"
+
+export const REQUESTY_MODEL_ID_FIELD = "requestyModelId"
 
 export const requestyProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.requesty,

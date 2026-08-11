@@ -6,17 +6,6 @@ import type { ProviderIdentifier } from "../provider-identifiers.js"
 export const API_PROVIDER_FIELD = "apiProvider"
 export const SETTINGS_SHAPE_FIELD = "settingsShape"
 export const API_MODEL_ID_FIELD = "apiModelId"
-export const OPEN_ROUTER_MODEL_ID_FIELD = "openRouterModelId"
-export const OPEN_AI_MODEL_ID_FIELD = "openAiModelId"
-export const OLLAMA_MODEL_ID_FIELD = "ollamaModelId"
-export const LM_STUDIO_MODEL_ID_FIELD = "lmStudioModelId"
-export const REQUESTY_MODEL_ID_FIELD = "requestyModelId"
-export const UNBOUND_MODEL_ID_FIELD = "unboundModelId"
-export const LITELLM_MODEL_ID_FIELD = "litellmModelId"
-export const VERCEL_AI_GATEWAY_MODEL_ID_FIELD = "vercelAiGatewayModelId"
-export const OPENCODE_GO_MODEL_ID_FIELD = "opencodeGoModelId"
-export const ZOO_GATEWAY_MODEL_ID_FIELD = "zooGatewayModelId"
-export const OPEN_AI_CODEX_SERVICE_TIER_KEY = "openAiCodexServiceTier"
 
 export const baseProviderSettingsShape = {
 	includeMaxTokens: z.boolean().optional(),

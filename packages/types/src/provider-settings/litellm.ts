@@ -1,12 +1,9 @@
 import { z } from "zod"
 
 import { providerIdentifiers } from "../provider-identifiers.js"
-import {
-	LITELLM_MODEL_ID_FIELD,
-	baseProviderSettingsShape,
-	createModelIdAccessor,
-	createProviderDefinition,
-} from "./common.js"
+import { baseProviderSettingsShape, createModelIdAccessor, createProviderDefinition } from "./common.js"
+
+export const LITELLM_MODEL_ID_FIELD = "litellmModelId"
 
 export const litellmProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.litellm,

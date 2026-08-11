@@ -1,12 +1,9 @@
 import { z } from "zod"
 
 import { providerIdentifiers } from "../provider-identifiers.js"
-import {
-	OPEN_ROUTER_MODEL_ID_FIELD,
-	baseProviderSettingsShape,
-	createModelIdAccessor,
-	createProviderDefinition,
-} from "./common.js"
+import { baseProviderSettingsShape, createModelIdAccessor, createProviderDefinition } from "./common.js"
+
+export const OPEN_ROUTER_MODEL_ID_FIELD = "openRouterModelId"
 
 export const openRouterProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.openrouter,
