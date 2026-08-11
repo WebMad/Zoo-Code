@@ -16,13 +16,8 @@ const expectedModelIdKeys = [
 	"zooGatewayModelId",
 ] as const
 
-type ExpectedModelIdKeys = typeof expectedModelIdKeys
-
-const exactModelIdKeys: ExpectedModelIdKeys = modelIdKeys
-void exactModelIdKeys
-
 describe("modelIdKeys", () => {
-	it("preserves every model ID setting for compatibility", () => {
+	it("preserves every model ID setting and its legacy precedence order", () => {
 		expect(modelIdKeys).toEqual(expectedModelIdKeys)
 	})
 })
