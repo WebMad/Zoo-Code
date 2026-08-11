@@ -209,6 +209,7 @@ type ProviderModelIdAccessor = (settings: Record<string, unknown>) => string | u
 
 type TypedProviderModelIdAccessor<S extends z.ZodRawShape> = (settings: z.infer<z.ZodObject<S>>) => string | undefined
 
+// `modelIdKey` supports deprecated exports. Remove it in favor of an accessor-only contract when those exports are removed.
 const createProviderDefinition = <P extends ProviderName, S extends z.ZodRawShape, K extends Extract<keyof S, string>>({
 	apiProvider,
 	schema,
