@@ -134,13 +134,8 @@ export const providerNamesSchema = z.enum(providerNames)
 
 export type ProviderName = z.infer<typeof providerNamesSchema>
 
-export const isActiveProviderName = (key: unknown): key is ProviderName =>
+export const isProviderName = (key: unknown): key is ProviderName =>
 	typeof key === "string" && providerNames.includes(key as ProviderName)
-
-/**
- * @deprecated Use `isActiveProviderName()` instead.
- */
-export const isProviderName = isActiveProviderName
 
 /**
  * RetiredProviderName
@@ -805,7 +800,7 @@ export type TypicalProvider = Exclude<ProviderName, InternalProvider | CustomPro
  * @deprecated Use the specific provider type guards instead.
  */
 export const isTypicalProvider = (key: unknown): key is TypicalProvider =>
-	isActiveProviderName(key) && !isInternalProvider(key) && !isCustomProvider(key) && !isFauxProvider(key)
+	isProviderName(key) && !isInternalProvider(key) && !isCustomProvider(key) && !isFauxProvider(key)
 
 /**
  * @deprecated Use `getModelId()` instead. This map is retained for API compatibility.
@@ -825,7 +820,7 @@ export const modelIdKeysByProvider = Object.fromEntries(
 ) as Record<TypicalProvider, ModelIdKey>
 
 export function getModelId(settings: ProviderSettings): string | undefined {
-	if (isActiveProviderName(settings.apiProvider)) {
+	if (isProviderName(settings.apiProvider)) {
 		return providerDefinitions[settings.apiProvider]?.getModelId(settings)
 	}
 

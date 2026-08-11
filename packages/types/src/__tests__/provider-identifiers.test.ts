@@ -8,7 +8,6 @@ import {
 	isFauxProvider,
 	isInternalProvider,
 	isLocalProvider,
-	isActiveProviderName,
 	isProviderName,
 	isRetiredProvider,
 	localProviders,
@@ -196,22 +195,17 @@ describe("provider identifiers", () => {
 
 	it("preserves provider-settings type guards", () => {
 		for (const identifier of expectedProviderIdentifiers) {
-			expect(isActiveProviderName(identifier)).toBe(true)
+			expect(isProviderName(identifier)).toBe(true)
 			expect(isRetiredProvider(identifier)).toBe(false)
 		}
 
 		for (const identifier of expectedRetiredProviderIdentifiers) {
-			expect(isActiveProviderName(identifier)).toBe(false)
+			expect(isProviderName(identifier)).toBe(false)
 			expect(isRetiredProvider(identifier)).toBe(true)
 		}
 
-		expect(isActiveProviderName("unknown-provider")).toBe(false)
-		expect(isActiveProviderName(undefined)).toBe(false)
-		expect(isRetiredProvider("unknown-provider")).toBe(false)
-	})
-
-	it("preserves the deprecated isProviderName compatibility export", () => {
-		expect(isProviderName(providerIdentifiers.anthropic)).toBe(true)
 		expect(isProviderName("unknown-provider")).toBe(false)
+		expect(isProviderName(undefined)).toBe(false)
+		expect(isRetiredProvider("unknown-provider")).toBe(false)
 	})
 })

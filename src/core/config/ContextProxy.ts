@@ -15,7 +15,7 @@ import {
 	providerSettingsSchema,
 	globalSettingsSchema,
 	isSecretStateKey,
-	isActiveProviderName,
+	isProviderName,
 	isRetiredProvider,
 } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
@@ -262,7 +262,7 @@ export class ContextProxy {
 		try {
 			const apiProvider = this.stateCache.apiProvider
 			const isKnownProvider =
-				typeof apiProvider === "string" && (isActiveProviderName(apiProvider) || isRetiredProvider(apiProvider))
+				typeof apiProvider === "string" && (isProviderName(apiProvider) || isRetiredProvider(apiProvider))
 
 			if (apiProvider !== undefined && !isKnownProvider) {
 				logger.info(`[ContextProxy] Found invalid provider "${apiProvider}" in storage - clearing it`)
@@ -494,7 +494,7 @@ export class ContextProxy {
 
 		const isKnownProvider =
 			typeof sanitizedValues.apiProvider === "string" &&
-			(isActiveProviderName(sanitizedValues.apiProvider) || isRetiredProvider(sanitizedValues.apiProvider))
+			(isProviderName(sanitizedValues.apiProvider) || isRetiredProvider(sanitizedValues.apiProvider))
 
 		if (sanitizedValues.apiProvider !== undefined && !isKnownProvider) {
 			logger.info(

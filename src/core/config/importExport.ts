@@ -9,7 +9,7 @@ import { z, ZodError } from "zod"
 import {
 	globalSettingsSchema,
 	providerSettingsWithIdSchema,
-	isActiveProviderName,
+	isProviderName,
 	type GlobalSettings,
 	type ProviderSettingsWithId,
 } from "@roo-code/types"
@@ -58,7 +58,7 @@ function sanitizeProviderConfig(configName: string, apiConfig: unknown): { confi
 	}
 
 	// Check if apiProvider is set and if it's still valid
-	if (config.apiProvider !== undefined && !isActiveProviderName(config.apiProvider)) {
+	if (config.apiProvider !== undefined && !isProviderName(config.apiProvider)) {
 		const invalidProvider = config.apiProvider
 		// Return a new config object without the invalid apiProvider
 		const { apiProvider, ...restConfig } = config
