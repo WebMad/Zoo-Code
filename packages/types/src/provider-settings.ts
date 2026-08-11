@@ -205,21 +205,37 @@ const baseProviderSettingsShape = {
 	verbosity: verbosityLevelsSchema.optional(),
 }
 
-type ProviderModelIdAccessor = (settings: Record<string, unknown>) => string | undefined
+type ModelId = string | undefined
+type UntypedProviderSettings = Record<string, unknown>
+type ProviderModelIdAccessor = (settings: UntypedProviderSettings) => ModelId
 
-type TypedProviderModelIdAccessor<S extends z.ZodRawShape> = (settings: z.infer<z.ZodObject<S>>) => string | undefined
+type ProviderSettingsFromSchema<S extends z.ZodRawShape> = z.infer<z.ZodObject<S>>
+
+type TypedProviderModelIdAccessor<S extends z.ZodRawShape> = (settings: ProviderSettingsFromSchema<S>) => ModelId
+
+type ProviderDefinitionInput<P extends ProviderName, S extends z.ZodRawShape> = {
+	apiProvider: P
+	schema: S
+	modelIdKey?: Extract<keyof S, string>
+	getModelId: TypedProviderModelIdAccessor<S>
+}
+
+const createModelIdAccessor =
+	(modelIdKey: string): ProviderModelIdAccessor =>
+	(settings) =>
+		settings[modelIdKey] as ModelId
 
 // `modelIdKey` supports deprecated exports. Remove it in favor of an accessor-only contract when those exports are removed.
-const createProviderDefinition = <P extends ProviderName, S extends z.ZodRawShape, K extends Extract<keyof S, string>>({
+const createProviderDefinition = <P extends ProviderName, S extends z.ZodRawShape>({
 	apiProvider,
 	schema,
 	...modelIdDefinition
-}: {
-	apiProvider: P
-	schema: S
-} & ({ modelIdKey: K; getModelId?: never } | { modelIdKey?: never; getModelId: TypedProviderModelIdAccessor<S> })) => {
-	const getModelId: TypedProviderModelIdAccessor<S> =
-		modelIdDefinition.getModelId ?? ((settings) => settings[modelIdDefinition.modelIdKey] as string | undefined)
+}: ProviderDefinitionInput<P, S>) => {
+	const settingsSchema = z.object(schema)
+	const getModelId: ProviderModelIdAccessor = (settings) => {
+		const parsedSettings = settingsSchema.safeParse(settings)
+		return parsedSettings.success ? modelIdDefinition.getModelId(parsedSettings.data) : undefined
+	}
 
 	return {
 		apiProvider,
@@ -229,7 +245,7 @@ const createProviderDefinition = <P extends ProviderName, S extends z.ZodRawShap
 			...schema,
 			[API_PROVIDER_FIELD]: z.literal(apiProvider),
 		}),
-		getModelId: ((settings) => getModelId(settings as z.infer<z.ZodObject<S>>)) satisfies ProviderModelIdAccessor,
+		getModelId,
 	}
 }
 
@@ -242,6 +258,7 @@ const apiModelIdProviderModelShape = {
 const anthropicProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.anthropic,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		apiKey: z.string().optional(),
@@ -254,6 +271,7 @@ const anthropicProviderDefinition = createProviderDefinition({
 const openRouterProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.openrouter,
 	modelIdKey: OPEN_ROUTER_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(OPEN_ROUTER_MODEL_ID_FIELD),
 	schema: {
 		...baseProviderSettingsShape,
 		openRouterApiKey: z.string().optional(),
@@ -266,6 +284,7 @@ const openRouterProviderDefinition = createProviderDefinition({
 const bedrockProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.bedrock,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		awsAccessKey: z.string().optional(),
@@ -291,6 +310,7 @@ const bedrockProviderDefinition = createProviderDefinition({
 const vertexProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.vertex,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		vertexKeyFile: z.string().optional(),
@@ -304,6 +324,7 @@ const vertexProviderDefinition = createProviderDefinition({
 const openAiProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.openai,
 	modelIdKey: OPEN_AI_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(OPEN_AI_MODEL_ID_FIELD),
 	schema: {
 		...baseProviderSettingsShape,
 		openAiBaseUrl: z.string().optional(),
@@ -322,6 +343,7 @@ const openAiProviderDefinition = createProviderDefinition({
 const ollamaProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.ollama,
 	modelIdKey: OLLAMA_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(OLLAMA_MODEL_ID_FIELD),
 	schema: {
 		...baseProviderSettingsShape,
 		[OLLAMA_MODEL_ID_FIELD]: z.string().optional(),
@@ -350,6 +372,7 @@ const vsCodeLmProviderDefinition = createProviderDefinition({
 const lmStudioProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.lmstudio,
 	modelIdKey: LM_STUDIO_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(LM_STUDIO_MODEL_ID_FIELD),
 	schema: {
 		...baseProviderSettingsShape,
 		[LM_STUDIO_MODEL_ID_FIELD]: z.string().optional(),
@@ -362,6 +385,7 @@ const lmStudioProviderDefinition = createProviderDefinition({
 const geminiProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.gemini,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		geminiApiKey: z.string().optional(),
@@ -372,6 +396,7 @@ const geminiProviderDefinition = createProviderDefinition({
 const geminiCliProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.geminiCli,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		geminiCliOAuthPath: z.string().optional(),
@@ -382,6 +407,7 @@ const geminiCliProviderDefinition = createProviderDefinition({
 const openAiCodexProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.openaiCodex,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		// Codex "Fast" mode maps to the Responses API priority service tier.
@@ -392,6 +418,7 @@ const openAiCodexProviderDefinition = createProviderDefinition({
 const openAiNativeProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.openaiNative,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		openAiNativeApiKey: z.string().optional(),
@@ -405,6 +432,7 @@ const openAiNativeProviderDefinition = createProviderDefinition({
 const mistralProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.mistral,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		mistralApiKey: z.string().optional(),
@@ -415,6 +443,7 @@ const mistralProviderDefinition = createProviderDefinition({
 const deepSeekProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.deepseek,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		deepSeekBaseUrl: z.string().optional(),
@@ -425,6 +454,7 @@ const deepSeekProviderDefinition = createProviderDefinition({
 const poeProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.poe,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		poeApiKey: z.string().optional(),
@@ -435,6 +465,7 @@ const poeProviderDefinition = createProviderDefinition({
 const moonshotProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.moonshot,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		moonshotBaseUrl: z
@@ -450,6 +481,7 @@ export type KimiCodeAuthMethod = z.infer<typeof kimiCodeAuthMethodSchema>
 const kimiCodeProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.kimiCode,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		kimiCodeAuthMethod: kimiCodeAuthMethodSchema.optional(),
@@ -460,6 +492,7 @@ const kimiCodeProviderDefinition = createProviderDefinition({
 const minimaxProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.minimax,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		minimaxBaseUrl: z
@@ -472,6 +505,7 @@ const minimaxProviderDefinition = createProviderDefinition({
 const mimoProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.mimo,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		mimoBaseUrl: z
@@ -489,6 +523,7 @@ const mimoProviderDefinition = createProviderDefinition({
 const requestyProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.requesty,
 	modelIdKey: REQUESTY_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(REQUESTY_MODEL_ID_FIELD),
 	schema: {
 		...baseProviderSettingsShape,
 		requestyBaseUrl: z.string().optional(),
@@ -500,6 +535,7 @@ const requestyProviderDefinition = createProviderDefinition({
 const unboundProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.unbound,
 	modelIdKey: UNBOUND_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(UNBOUND_MODEL_ID_FIELD),
 	schema: {
 		...baseProviderSettingsShape,
 		unboundApiKey: z.string().optional(),
@@ -510,6 +546,7 @@ const unboundProviderDefinition = createProviderDefinition({
 const fakeAiProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.fakeAi,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		fakeAi: z.unknown().optional(),
@@ -519,6 +556,7 @@ const fakeAiProviderDefinition = createProviderDefinition({
 const xaiProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.xai,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		xaiApiKey: z.string().optional(),
@@ -528,6 +566,7 @@ const xaiProviderDefinition = createProviderDefinition({
 const litellmProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.litellm,
 	modelIdKey: LITELLM_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(LITELLM_MODEL_ID_FIELD),
 	schema: {
 		...baseProviderSettingsShape,
 		litellmBaseUrl: z.string().optional(),
@@ -540,6 +579,7 @@ const litellmProviderDefinition = createProviderDefinition({
 const sambaNovaProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.sambanova,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		sambaNovaApiKey: z.string().optional(),
@@ -553,6 +593,7 @@ export type ZaiApiLine = z.infer<typeof zaiApiLineSchema>
 const zaiProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.zai,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		zaiApiKey: z.string().optional(),
@@ -563,6 +604,7 @@ const zaiProviderDefinition = createProviderDefinition({
 const fireworksProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.fireworks,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		fireworksApiKey: z.string().optional(),
@@ -572,6 +614,7 @@ const fireworksProviderDefinition = createProviderDefinition({
 const friendliProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.friendli,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		friendliApiKey: z.string().optional(),
@@ -581,6 +624,7 @@ const friendliProviderDefinition = createProviderDefinition({
 const qwenCodeProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.qwenCode,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		qwenCodeOauthPath: z.string().optional(),
@@ -590,6 +634,7 @@ const qwenCodeProviderDefinition = createProviderDefinition({
 const vercelAiGatewayProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.vercelAiGateway,
 	modelIdKey: VERCEL_AI_GATEWAY_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(VERCEL_AI_GATEWAY_MODEL_ID_FIELD),
 	schema: {
 		...baseProviderSettingsShape,
 		vercelAiGatewayApiKey: z.string().optional(),
@@ -600,6 +645,7 @@ const vercelAiGatewayProviderDefinition = createProviderDefinition({
 const opencodeGoProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.opencodeGo,
 	modelIdKey: OPENCODE_GO_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(OPENCODE_GO_MODEL_ID_FIELD),
 	schema: {
 		...baseProviderSettingsShape,
 		opencodeGoApiKey: z.string().optional(),
@@ -612,6 +658,7 @@ const KENARI_MODEL_ID_FIELD = "kenariModelId"
 const kenariProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.kenari,
 	modelIdKey: KENARI_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(KENARI_MODEL_ID_FIELD),
 	schema: {
 		...baseProviderSettingsShape,
 		kenariApiKey: z.string().optional(),
@@ -622,6 +669,7 @@ const kenariProviderDefinition = createProviderDefinition({
 const zooGatewayProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.zooGateway,
 	modelIdKey: ZOO_GATEWAY_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(ZOO_GATEWAY_MODEL_ID_FIELD),
 	schema: {
 		...baseProviderSettingsShape,
 		zooSessionToken: z.string().optional(),
@@ -633,6 +681,7 @@ const zooGatewayProviderDefinition = createProviderDefinition({
 const basetenProviderDefinition = createProviderDefinition({
 	apiProvider: providerIdentifiers.baseten,
 	modelIdKey: API_MODEL_ID_FIELD,
+	getModelId: createModelIdAccessor(API_MODEL_ID_FIELD),
 	schema: {
 		...apiModelIdProviderModelShape,
 		basetenApiKey: z.string().optional(),
