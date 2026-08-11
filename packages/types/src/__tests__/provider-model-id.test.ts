@@ -1,5 +1,24 @@
 import { getModelId, modelIdKeys, providerIdentifiers, type ProviderSettings } from "../index.js"
 
+type ExpectedModelIdKeys = readonly [
+	"apiModelId",
+	"openRouterModelId",
+	"openAiModelId",
+	"ollamaModelId",
+	"lmStudioModelId",
+	"lmStudioDraftModelId",
+	"requestyModelId",
+	"unboundModelId",
+	"litellmModelId",
+	"vercelAiGatewayModelId",
+	"opencodeGoModelId",
+	"kenariModelId",
+	"zooGatewayModelId",
+]
+
+const exactModelIdKeys: ExpectedModelIdKeys = modelIdKeys
+void exactModelIdKeys
+
 describe("modelIdKeys", () => {
 	it("preserves every model ID setting for compatibility", () => {
 		expect(modelIdKeys).toEqual([
@@ -8,6 +27,7 @@ describe("modelIdKeys", () => {
 			"openAiModelId",
 			"ollamaModelId",
 			"lmStudioModelId",
+			"lmStudioDraftModelId",
 			"requestyModelId",
 			"unboundModelId",
 			"litellmModelId",
@@ -15,7 +35,6 @@ describe("modelIdKeys", () => {
 			"opencodeGoModelId",
 			"kenariModelId",
 			"zooGatewayModelId",
-			"lmStudioDraftModelId",
 		])
 	})
 })
@@ -68,6 +87,16 @@ describe("getModelId", () => {
 
 	it("returns undefined when no provider is selected", () => {
 		expect(getModelId({})).toBeUndefined()
+	})
+
+	it("preserves legacy model ID precedence for retired providers", () => {
+		const settings: ProviderSettings = {
+			apiProvider: "groq",
+			lmStudioDraftModelId: "draft-model",
+			requestyModelId: "requesty-model",
+		}
+
+		expect(getModelId(settings)).toBe("draft-model")
 	})
 
 	it("resolves a model ID for every provider definition without throwing", () => {

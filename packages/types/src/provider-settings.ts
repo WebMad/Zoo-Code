@@ -134,7 +134,7 @@ export const providerNamesSchema = z.enum(providerNames)
 
 export type ProviderName = z.infer<typeof providerNamesSchema>
 
-export const isProviderName = (key: unknown): key is ProviderName =>
+export const isActiveProviderName = (key: unknown): key is ProviderName =>
 	typeof key === "string" && providerNames.includes(key as ProviderName)
 
 /**
@@ -769,19 +769,24 @@ export const PROVIDER_SETTINGS_KEYS = providerSettingsSchema.keyof().options
  */
 export type ModelIdKey = Extract<keyof ProviderSettingsShape, `${string}ModelId`>
 
-const legacyModelIdKeys = ["lmStudioDraftModelId"] as const satisfies readonly ModelIdKey[]
-
 /**
  * @deprecated Use `getModelId()` to resolve the model ID for the active provider.
  */
 export const modelIdKeys = [
-	...new Set(
-		providerDefinitionList.flatMap((definition) =>
-			definition.modelIdKey ? [definition.modelIdKey as ModelIdKey] : [],
-		),
-	),
-	...legacyModelIdKeys,
-] as const
+	"apiModelId",
+	"openRouterModelId",
+	"openAiModelId",
+	"ollamaModelId",
+	"lmStudioModelId",
+	"lmStudioDraftModelId",
+	"requestyModelId",
+	"unboundModelId",
+	"litellmModelId",
+	"vercelAiGatewayModelId",
+	"opencodeGoModelId",
+	"kenariModelId",
+	"zooGatewayModelId",
+] as const satisfies readonly ModelIdKey[]
 
 /**
  * @deprecated Provider categories should use the specific provider type guards.
@@ -792,7 +797,7 @@ export type TypicalProvider = Exclude<ProviderName, InternalProvider | CustomPro
  * @deprecated Use the specific provider type guards instead.
  */
 export const isTypicalProvider = (key: unknown): key is TypicalProvider =>
-	isProviderName(key) && !isInternalProvider(key) && !isCustomProvider(key) && !isFauxProvider(key)
+	isActiveProviderName(key) && !isInternalProvider(key) && !isCustomProvider(key) && !isFauxProvider(key)
 
 /**
  * @deprecated Use `getModelId()` instead. This map is retained for API compatibility.
@@ -812,7 +817,7 @@ export const modelIdKeysByProvider = Object.fromEntries(
 ) as Record<TypicalProvider, ModelIdKey>
 
 export function getModelId(settings: ProviderSettings): string | undefined {
-	if (isProviderName(settings.apiProvider)) {
+	if (isActiveProviderName(settings.apiProvider)) {
 		return providerDefinitions[settings.apiProvider]?.getModelId(settings)
 	}
 
