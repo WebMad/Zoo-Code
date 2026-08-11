@@ -1,6 +1,6 @@
 import { getModelId, modelIdKeys, providerIdentifiers, type ProviderSettings } from "../index.js"
 
-type ExpectedModelIdKeys = readonly [
+const expectedModelIdKeys = [
 	"apiModelId",
 	"openRouterModelId",
 	"openAiModelId",
@@ -14,33 +14,21 @@ type ExpectedModelIdKeys = readonly [
 	"opencodeGoModelId",
 	"kenariModelId",
 	"zooGatewayModelId",
-]
+] as const
+
+type ExpectedModelIdKeys = typeof expectedModelIdKeys
 
 const exactModelIdKeys: ExpectedModelIdKeys = modelIdKeys
 void exactModelIdKeys
 
 describe("modelIdKeys", () => {
 	it("preserves every model ID setting for compatibility", () => {
-		expect(modelIdKeys).toEqual([
-			"apiModelId",
-			"openRouterModelId",
-			"openAiModelId",
-			"ollamaModelId",
-			"lmStudioModelId",
-			"lmStudioDraftModelId",
-			"requestyModelId",
-			"unboundModelId",
-			"litellmModelId",
-			"vercelAiGatewayModelId",
-			"opencodeGoModelId",
-			"kenariModelId",
-			"zooGatewayModelId",
-		])
+		expect(modelIdKeys).toEqual(expectedModelIdKeys)
 	})
 })
 
 describe("getModelId", () => {
-	it("uses the provider-specific model ID field", () => {
+	it("uses a provider-specific model ID field instead of the shared apiModelId field", () => {
 		const settings: ProviderSettings = {
 			apiProvider: providerIdentifiers.openrouter,
 			apiModelId: "unrelated-model",
@@ -50,10 +38,10 @@ describe("getModelId", () => {
 		expect(getModelId(settings)).toBe("openrouter-model")
 	})
 
-	it("uses the active provider when other model ID fields are present", () => {
+	it("selects the active provider's field when multiple provider-specific model IDs are present", () => {
 		const settings: ProviderSettings = {
 			apiProvider: providerIdentifiers.ollama,
-			apiModelId: "anthropic-model",
+			openRouterModelId: "inactive-openrouter-model",
 			ollamaModelId: "ollama-model",
 		}
 
