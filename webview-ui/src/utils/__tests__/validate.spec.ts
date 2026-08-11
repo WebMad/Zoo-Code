@@ -1,4 +1,9 @@
-import { type ProviderSettings, type OrganizationAllowList, type RouterModels } from "@roo-code/types"
+import {
+	providerIdentifiers,
+	type ProviderSettings,
+	type OrganizationAllowList,
+	type RouterModels,
+} from "@roo-code/types"
 
 // Mock i18next to return translation keys with interpolated values
 vi.mock("i18next", () => ({
@@ -117,16 +122,22 @@ describe("Model Validation Functions", () => {
 		it.each([
 			{
 				name: "OpenAI Native",
-				config: { apiProvider: "openai-native", apiModelId: "blocked-model" } satisfies ProviderSettings,
+				config: {
+					apiProvider: providerIdentifiers.openaiNative,
+					apiModelId: "blocked-model",
+				} satisfies ProviderSettings,
 			},
 			{
 				name: "OpenAI Compatible",
-				config: { apiProvider: "openai", openAiModelId: "blocked-model" } satisfies ProviderSettings,
+				config: {
+					apiProvider: providerIdentifiers.openai,
+					openAiModelId: "blocked-model",
+				} satisfies ProviderSettings,
 			},
 			{
 				name: "VS Code LM",
 				config: {
-					apiProvider: "vscode-lm",
+					apiProvider: providerIdentifiers.vscodeLm,
 					vsCodeLmModelSelector: { id: "blocked-model" },
 				} satisfies ProviderSettings,
 			},
