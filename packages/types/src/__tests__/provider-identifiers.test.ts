@@ -9,6 +9,7 @@ import {
 	isInternalProvider,
 	isLocalProvider,
 	isActiveProviderName,
+	isProviderName,
 	isRetiredProvider,
 	localProviders,
 	MODELS_BY_PROVIDER,
@@ -207,5 +208,10 @@ describe("provider identifiers", () => {
 		expect(isActiveProviderName("unknown-provider")).toBe(false)
 		expect(isActiveProviderName(undefined)).toBe(false)
 		expect(isRetiredProvider("unknown-provider")).toBe(false)
+	})
+
+	it("preserves the deprecated isProviderName compatibility export", () => {
+		expect(isProviderName(providerIdentifiers.anthropic)).toBe(true)
+		expect(isProviderName("unknown-provider")).toBe(false)
 	})
 })

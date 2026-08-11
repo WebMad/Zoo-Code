@@ -138,6 +138,11 @@ export const isActiveProviderName = (key: unknown): key is ProviderName =>
 	typeof key === "string" && providerNames.includes(key as ProviderName)
 
 /**
+ * @deprecated Use `isActiveProviderName()` instead.
+ */
+export const isProviderName = isActiveProviderName
+
+/**
  * RetiredProviderName
  */
 
@@ -693,6 +698,7 @@ const indexProviderDefinitions = (
 ): Partial<Record<ProviderName, ProviderDefinition>> => {
 	const indexedDefinitions: Partial<Record<ProviderName, ProviderDefinition>> = {}
 
+	// Keep registry construction non-throwing so a malformed definition cannot prevent the extension from starting in production.
 	for (const definition of definitions) {
 		if (indexedDefinitions[definition.apiProvider]) {
 			console.warn(`Duplicate provider definition ignored: ${definition.apiProvider}`)
@@ -724,6 +730,7 @@ const getDiscriminatedSchemas = <const D extends readonly [ProviderDefinition, .
 	definitions: D,
 ): ProviderDefinitionSchemas<D> => {
 	const [firstDefinition, ...remainingDefinitions] = definitions
+	// Array mapping widens the tuple, so restore the per-definition schema tuple type expected by Zod.
 	return [
 		firstDefinition.schema,
 		...remainingDefinitions.map((definition) => definition.schema),
@@ -744,6 +751,7 @@ const providerSettingsObjectSchema = providerDefinitionList.reduce<z.AnyZodObjec
 	z.object({}),
 )
 
+// `AnyZodObject.shape` loses the merged shape precision, so restore the type derived from the provider definitions.
 const providerSettingsShape = providerSettingsObjectSchema.shape as ProviderSettingsShape
 
 export const providerSettingsSchema = z.object({
