@@ -7,8 +7,16 @@ import {
 	providerSettingsSchemaDiscriminated,
 } from "../provider-settings.js"
 import { OpenAiCodexServiceTier, OpenAiServiceTier } from "../model.js"
+import { providerDefinitionList } from "../provider-settings/index.js"
 
 describe("provider settings discriminated union", () => {
+	it("composes exactly one provider-specific definition for every provider", () => {
+		const registeredProviders = providerDefinitionList.map(({ apiProvider }) => apiProvider)
+
+		expect([...registeredProviders].sort()).toEqual([...providerNames].sort())
+		expect(new Set(registeredProviders).size).toBe(providerNames.length)
+	})
+
 	it.each(providerNames)("accepts the %s provider branch", (apiProvider) => {
 		expect(providerSettingsSchemaDiscriminated.safeParse({ apiProvider }).success).toBe(true)
 	})
