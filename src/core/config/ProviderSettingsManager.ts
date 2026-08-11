@@ -11,7 +11,7 @@ import {
 	DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
 	getModelId,
 	type ProviderName,
-	isProviderName,
+	isActiveProviderName,
 	isRetiredProvider,
 } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
@@ -688,7 +688,7 @@ export class ProviderSettingsManager {
 		// Check if apiProvider is set and if it's still recognized (active or retired)
 		if (
 			apiProvider !== undefined &&
-			(typeof apiProvider !== "string" || (!isProviderName(apiProvider) && !isRetiredProvider(apiProvider)))
+			(typeof apiProvider !== "string" || (!isActiveProviderName(apiProvider) && !isRetiredProvider(apiProvider)))
 		) {
 			console.log(
 				`[ProviderSettingsManager] Sanitizing unknown provider "${config.apiProvider}" - resetting to undefined`,
