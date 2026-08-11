@@ -769,6 +769,8 @@ export const PROVIDER_SETTINGS_KEYS = providerSettingsSchema.keyof().options
  */
 export type ModelIdKey = Extract<keyof ProviderSettingsShape, `${string}ModelId`>
 
+const legacyModelIdKeys = ["lmStudioDraftModelId"] as const satisfies readonly ModelIdKey[]
+
 /**
  * @deprecated Use `getModelId()` to resolve the model ID for the active provider.
  */
@@ -778,6 +780,7 @@ export const modelIdKeys = [
 			definition.modelIdKey ? [definition.modelIdKey as ModelIdKey] : [],
 		),
 	),
+	...legacyModelIdKeys,
 ] as const
 
 /**

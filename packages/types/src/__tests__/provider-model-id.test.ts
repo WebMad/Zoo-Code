@@ -1,4 +1,24 @@
-import { getModelId, providerIdentifiers, type ProviderSettings } from "../index.js"
+import { getModelId, modelIdKeys, providerIdentifiers, type ProviderSettings } from "../index.js"
+
+describe("modelIdKeys", () => {
+	it("preserves every model ID setting for compatibility", () => {
+		expect(modelIdKeys).toEqual([
+			"apiModelId",
+			"openRouterModelId",
+			"openAiModelId",
+			"ollamaModelId",
+			"lmStudioModelId",
+			"requestyModelId",
+			"unboundModelId",
+			"litellmModelId",
+			"vercelAiGatewayModelId",
+			"opencodeGoModelId",
+			"kenariModelId",
+			"zooGatewayModelId",
+			"lmStudioDraftModelId",
+		])
+	})
+})
 
 describe("getModelId", () => {
 	it("uses the provider-specific model ID field", () => {
