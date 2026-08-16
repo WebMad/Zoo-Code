@@ -8,6 +8,7 @@ import {
 	type ModelRecord,
 	type ProviderSettings,
 	providerIdentifiers,
+	RouterModelsMessageType,
 } from "@roo-code/types"
 
 import { useAppTranslation } from "@src/i18n/TranslationContext"
@@ -51,7 +52,7 @@ export const KimiCode = ({
 
 	const refreshModels = () => {
 		vscode.postMessage({
-			type: "requestRouterModels",
+			type: RouterModelsMessageType.requestRouterModels,
 			values: {
 				provider: providerIdentifiers.kimiCode,
 				refresh: true,

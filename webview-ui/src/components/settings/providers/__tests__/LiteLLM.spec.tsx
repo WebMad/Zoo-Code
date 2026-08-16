@@ -1,7 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 
-import { providerIdentifiers, type OrganizationAllowList, type ProviderSettings } from "@roo-code/types"
+import {
+	allRouterModelsProvider,
+	providerIdentifiers,
+	type OrganizationAllowList,
+	type ProviderSettings,
+} from "@roo-code/types"
 
 import { LiteLLM } from "../LiteLLM"
 
@@ -75,7 +80,7 @@ describe("LiteLLM", () => {
 			expect(invalidateQueries).toHaveBeenCalledWith({
 				queryKey: ["routerModels", providerIdentifiers.litellm],
 			})
-			expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["routerModels", "all"] })
+			expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["routerModels", allRouterModelsProvider] })
 		})
 	})
 
@@ -105,6 +110,43 @@ describe("LiteLLM", () => {
 		})
 
 		expect(screen.getByText("LiteLLM unavailable")).toBeInTheDocument()
+	})
+
+	it("does not invalidate caches when a LiteLLM error and router models arrive in the same tick", () => {
+		const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+		const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries")
+
+		render(
+			<QueryClientProvider client={queryClient}>
+				<LiteLLM
+					apiConfiguration={{
+						apiProvider: providerIdentifiers.litellm,
+						litellmApiKey: "test-key",
+						litellmBaseUrl: "http://localhost:4000",
+					}}
+					setApiConfigurationField={vi.fn()}
+					organizationAllowList={organizationAllowList}
+				/>
+			</QueryClientProvider>,
+		)
+
+		fireEvent.click(screen.getByTestId("refresh-button"))
+		act(() => {
+			window.dispatchEvent(
+				new MessageEvent("message", {
+					data: {
+						type: "singleRouterModelFetchResponse",
+						success: false,
+						values: { provider: providerIdentifiers.litellm },
+						error: "LiteLLM unavailable",
+					},
+				}),
+			)
+			window.dispatchEvent(new MessageEvent("message", { data: { type: "routerModels" } }))
+		})
+
+		expect(screen.getByText("LiteLLM unavailable")).toBeInTheDocument()
+		expect(invalidateQueries).not.toHaveBeenCalled()
 	})
 
 	it("ignores failed refresh responses for another provider", () => {

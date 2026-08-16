@@ -7,6 +7,7 @@ import {
 	type RouterModels,
 	unboundDefaultModelId,
 	providerIdentifiers,
+	RouterModelsMessageType,
 } from "@roo-code/types"
 
 import { vscode } from "@src/utils/vscode"
@@ -79,7 +80,7 @@ export const Unbound = ({
 				variant="outline"
 				onClick={() => {
 					vscode.postMessage({
-						type: "requestRouterModels",
+						type: RouterModelsMessageType.requestRouterModels,
 						values: { provider: providerIdentifiers.unbound, refresh: true },
 					})
 				}}>

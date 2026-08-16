@@ -2,7 +2,8 @@
 
 import React from "react"
 import { render, screen, fireEvent, waitFor, act } from "@/utils/test-utils"
-import { providerIdentifiers, type ProviderSettings } from "@roo-code/types"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { allRouterModelsProvider, providerIdentifiers, type ProviderSettings } from "@roo-code/types"
 
 import { Moonshot } from "../Moonshot"
 
@@ -220,6 +221,38 @@ describe("Moonshot Component", () => {
 
 		await waitFor(() => {
 			expect(screen.getByText("settings:providers.refreshModels.success")).toBeInTheDocument()
+		})
+	})
+
+	it("invalidates only the Moonshot and shared router-model caches after a successful refresh", async () => {
+		const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+		const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries")
+
+		render(
+			<QueryClientProvider client={queryClient}>
+				<Moonshot
+					apiConfiguration={createDefaultApiConfiguration({ moonshotApiKey: "test-key" })}
+					setApiConfigurationField={mockSetApiConfigurationField}
+				/>
+			</QueryClientProvider>,
+		)
+
+		const refreshButton = screen
+			.getAllByTestId("button")
+			.find((button) => button.getAttribute("data-variant") === "outline")!
+		fireEvent.click(refreshButton)
+		act(() => {
+			window.dispatchEvent(new MessageEvent("message", { data: { type: "routerModels" } }))
+		})
+
+		await waitFor(() => {
+			expect(invalidateQueries).toHaveBeenCalledWith({
+				queryKey: ["routerModels", providerIdentifiers.moonshot],
+			})
+			expect(invalidateQueries).toHaveBeenCalledWith({
+				queryKey: ["routerModels", allRouterModelsProvider],
+			})
+			expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ["routerModels"] })
 		})
 	})
 

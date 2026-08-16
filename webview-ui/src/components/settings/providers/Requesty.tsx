@@ -7,6 +7,7 @@ import {
 	type RouterModels,
 	requestyDefaultModelId,
 	providerIdentifiers,
+	RouterModelsMessageType,
 } from "@roo-code/types"
 
 import { vscode } from "@src/utils/vscode"
@@ -131,7 +132,7 @@ export const Requesty = ({
 				variant="outline"
 				onClick={() => {
 					vscode.postMessage({
-						type: "requestRouterModels",
+						type: RouterModelsMessageType.requestRouterModels,
 						values: { provider: providerIdentifiers.requesty, refresh: true },
 					})
 				}}>

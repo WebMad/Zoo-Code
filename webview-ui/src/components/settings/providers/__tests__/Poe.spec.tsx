@@ -1,7 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 
-import { providerIdentifiers, type OrganizationAllowList, type ProviderSettings } from "@roo-code/types"
+import {
+	allRouterModelsProvider,
+	providerIdentifiers,
+	type OrganizationAllowList,
+	type ProviderSettings,
+} from "@roo-code/types"
 
 import { Poe } from "../Poe"
 
@@ -101,6 +106,36 @@ describe("Poe", () => {
 
 		expect(screen.queryByText("OpenRouter authentication failed")).not.toBeInTheDocument()
 		expect(screen.queryByText("settings:providers.refreshModels.error")).not.toBeInTheDocument()
+	})
+
+	it("invalidates only the Poe and shared router-model caches after a successful refresh", async () => {
+		const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+		const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries")
+
+		render(
+			<QueryClientProvider client={queryClient}>
+				<Poe
+					apiConfiguration={{ apiProvider: providerIdentifiers.poe, poeApiKey: "test-key" }}
+					setApiConfigurationField={setApiConfigurationField}
+					organizationAllowList={organizationAllowList}
+				/>
+			</QueryClientProvider>,
+		)
+
+		fireEvent.click(screen.getByTestId("refresh-button"))
+		act(() => {
+			window.dispatchEvent(new MessageEvent("message", { data: { type: "routerModels" } }))
+		})
+
+		await waitFor(() => {
+			expect(invalidateQueries).toHaveBeenCalledWith({
+				queryKey: ["routerModels", providerIdentifiers.poe],
+			})
+			expect(invalidateQueries).toHaveBeenCalledWith({
+				queryKey: ["routerModels", allRouterModelsProvider],
+			})
+			expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ["routerModels"] })
+		})
 	})
 
 	it("clears model-specific reasoning settings when the Poe model changes", () => {

@@ -8,6 +8,7 @@ import {
 	type ExtensionMessage,
 	opencodeGoDefaultModelId,
 	providerIdentifiers,
+	RouterModelsMessageType,
 } from "@roo-code/types"
 
 import type { RouterName } from "@roo/api"
@@ -29,6 +30,13 @@ type OpenCodeGoProps = {
 	simplifySettings?: boolean
 }
 
+enum RefreshStatus {
+	Idle = "idle",
+	Loading = "loading",
+	Success = "success",
+	Error = "error",
+}
+
 export const OpenCodeGo = ({
 	apiConfiguration,
 	setApiConfigurationField,
@@ -38,24 +46,24 @@ export const OpenCodeGo = ({
 	simplifySettings,
 }: OpenCodeGoProps) => {
 	const { t } = useAppTranslation()
-	const [refreshStatus, setRefreshStatus] = useState<"idle" | "loading" | "success" | "error">("idle")
+	const [refreshStatus, setRefreshStatus] = useState(RefreshStatus.Idle)
 	const [refreshError, setRefreshError] = useState<string | undefined>()
 	const errorJustReceived = useRef(false)
 
 	useEffect(() => {
 		const handleMessage = (event: MessageEvent<ExtensionMessage>) => {
 			const message = event.data
-			if (message.type === "singleRouterModelFetchResponse" && !message.success) {
+			if (message.type === RouterModelsMessageType.singleRouterModelFetchResponse && !message.success) {
 				const providerName = message.values?.provider as RouterName
 				if (providerName === providerIdentifiers.opencodeGo) {
 					errorJustReceived.current = true
-					setRefreshStatus("error")
+					setRefreshStatus(RefreshStatus.Error)
 					setRefreshError(message.error)
 				}
-			} else if (message.type === "routerModels") {
-				if (refreshStatus === "loading") {
+			} else if (message.type === RouterModelsMessageType.routerModels) {
+				if (refreshStatus === RefreshStatus.Loading) {
 					if (!errorJustReceived.current) {
-						setRefreshStatus("success")
+						setRefreshStatus(RefreshStatus.Success)
 					}
 				}
 			}
@@ -80,10 +88,10 @@ export const OpenCodeGo = ({
 
 	const handleRefreshModels = useCallback(() => {
 		errorJustReceived.current = false
-		setRefreshStatus("loading")
+		setRefreshStatus(RefreshStatus.Loading)
 		setRefreshError(undefined)
 		vscode.postMessage({
-			type: "requestRouterModels",
+			type: RouterModelsMessageType.requestRouterModels,
 			values: {
 				provider: providerIdentifiers.opencodeGo,
 				refresh: true,
@@ -113,10 +121,10 @@ export const OpenCodeGo = ({
 			<Button
 				variant="outline"
 				onClick={handleRefreshModels}
-				disabled={refreshStatus === "loading"}
+				disabled={refreshStatus === RefreshStatus.Loading}
 				className="w-full">
 				<div className="flex items-center gap-2">
-					{refreshStatus === "loading" ? (
+					{refreshStatus === RefreshStatus.Loading ? (
 						<span className="codicon codicon-loading codicon-modifier-spin" />
 					) : (
 						<span className="codicon codicon-refresh" />
@@ -124,15 +132,15 @@ export const OpenCodeGo = ({
 					{t("settings:providers.refreshModels.label")}
 				</div>
 			</Button>
-			{refreshStatus === "loading" && (
+			{refreshStatus === RefreshStatus.Loading && (
 				<div className="text-sm text-vscode-descriptionForeground">
 					{t("settings:providers.refreshModels.loading")}
 				</div>
 			)}
-			{refreshStatus === "success" && (
+			{refreshStatus === RefreshStatus.Success && (
 				<div className="text-sm text-vscode-foreground">{t("settings:providers.refreshModels.success")}</div>
 			)}
-			{refreshStatus === "error" && (
+			{refreshStatus === RefreshStatus.Error && (
 				<div className="text-sm text-vscode-errorForeground">
 					{refreshError || t("settings:providers.refreshModels.error")}
 				</div>
