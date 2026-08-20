@@ -4,6 +4,7 @@ import {
 	OPEN_AI_CODEX_SERVICE_TIER_KEY,
 	OpenAiCodexServiceTier,
 	providerIdentifiers,
+	retiredProviderIdentifiers,
 	type ProviderSettings,
 } from "@roo-code/types"
 
@@ -266,15 +267,15 @@ describe("ProviderSettingsManager", () => {
 						default: {
 							config: {},
 							id: "default",
-							apiProvider: "roo",
+							apiProvider: retiredProviderIdentifiers.roo,
 							apiModelId: "roo/code-supernova", // Old model ID
 						},
 						test: {
-							apiProvider: "roo",
+							apiProvider: retiredProviderIdentifiers.roo,
 							apiModelId: "roo/code-supernova", // Old model ID
 						},
 						existing: {
-							apiProvider: "roo",
+							apiProvider: retiredProviderIdentifiers.roo,
 							apiModelId: "roo/code-supernova-1-million", // Already migrated
 						},
 						otherProvider: {
@@ -329,7 +330,7 @@ describe("ProviderSettingsManager", () => {
 
 			await providerSettingsManager.saveConfig("router-profile", {
 				id: "router-id",
-				apiProvider: "roo",
+				apiProvider: retiredProviderIdentifiers.roo,
 				apiModelId: "roo/code-supernova",
 				rooApiKey: "router-key",
 			} as any)
@@ -614,7 +615,7 @@ describe("ProviderSettingsManager", () => {
 			// Include a legacy provider-specific field (groqApiKey) that is no
 			// longer in the schema — passthrough() must keep it.
 			const retiredConfig = {
-				apiProvider: "groq",
+				apiProvider: retiredProviderIdentifiers.groq,
 				apiKey: "legacy-key",
 				apiModelId: "legacy-model",
 				openAiBaseUrl: "https://legacy.example/v1",
@@ -822,7 +823,7 @@ describe("ProviderSettingsManager", () => {
 				apiConfigs: {
 					retiredProvider: {
 						id: "retired-id",
-						apiProvider: "groq",
+						apiProvider: retiredProviderIdentifiers.groq,
 						apiKey: "legacy-key",
 						apiModelId: "legacy-model",
 						openAiBaseUrl: "https://legacy.example/v1",
@@ -916,7 +917,7 @@ describe("ProviderSettingsManager", () => {
 				apiConfigs: {
 					retired: {
 						id: "retired-id",
-						apiProvider: "groq",
+						apiProvider: retiredProviderIdentifiers.groq,
 						apiKey: "legacy-key",
 						apiModelId: "legacy-model",
 						openAiBaseUrl: "https://legacy.example/v1",

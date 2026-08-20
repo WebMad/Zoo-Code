@@ -1,6 +1,12 @@
-import { providerIdentifiers } from "@roo-code/types/provider-identifiers"
+import { providerIdentifiers, retiredProviderIdentifiers } from "@roo-code/types/provider-identifiers"
 
-const providerMembersByValue = new Map(Object.entries(providerIdentifiers).map(([member, value]) => [value, member]))
+const providerReplacementsByValue = new Map([
+	...Object.entries(providerIdentifiers).map(([member, value]) => [value, `providerIdentifiers.${member}`]),
+	...Object.entries(retiredProviderIdentifiers).map(([member, value]) => [
+		value,
+		`retiredProviderIdentifiers.${member}`,
+	]),
+])
 const typescriptExpressionWrappers = new Set([
 	"TSAsExpression",
 	"TSNonNullExpression",
@@ -40,14 +46,14 @@ function getRawProvider(node) {
 	}
 
 	if (node?.type === "Literal" && typeof node.value === "string") {
-		const member = providerMembersByValue.get(node.value)
-		return member ? { member, value: node.value } : undefined
+		const replacement = providerReplacementsByValue.get(node.value)
+		return replacement ? { replacement, value: node.value } : undefined
 	}
 
 	if (node?.type === "TemplateLiteral" && node.expressions.length === 0) {
 		const value = node.quasis[0]?.value.cooked
-		const member = value ? providerMembersByValue.get(value) : undefined
-		return member ? { member, value } : undefined
+		const replacement = value ? providerReplacementsByValue.get(value) : undefined
+		return replacement ? { replacement, value } : undefined
 	}
 
 	return undefined
@@ -60,7 +66,7 @@ export const noRawProviderIdentifiers = {
 		schema: [],
 		messages: {
 			useCanonical:
-				'Use providerIdentifiers.{{member}} instead of the raw provider identifier "{{value}}".',
+				'Use {{replacement}} instead of the raw provider identifier "{{value}}".',
 		},
 	},
 	create(context) {

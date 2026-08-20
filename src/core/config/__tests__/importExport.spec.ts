@@ -18,7 +18,7 @@ import { CustomModesManager } from "../CustomModesManager"
 import { safeWriteJson } from "../../../utils/safeWriteJson"
 
 import type { Mock } from "vitest"
-import { providerIdentifiers } from "@roo-code/types/provider-identifiers"
+import { providerIdentifiers, retiredProviderIdentifiers } from "@roo-code/types/provider-identifiers"
 
 vi.mock("vscode", () => ({
 	workspace: {
@@ -932,7 +932,7 @@ describe("importExport", () => {
 						currentApiConfigName: "router-profile",
 						apiConfigs: {
 							"router-profile": {
-								apiProvider: "roo",
+								apiProvider: retiredProviderIdentifiers.roo,
 								apiModelId: "roo/code-supernova",
 								rooApiKey: "router-key",
 								id: "router-id",
@@ -1155,7 +1155,7 @@ describe("importExport", () => {
 						},
 					},
 					globalSettings: {
-						imageGenerationProvider: "roo",
+						imageGenerationProvider: retiredProviderIdentifiers.roo,
 						openRouterImageGenerationSelectedModel: "openrouter/model-1",
 						customInstructions: "Keep this setting",
 					},

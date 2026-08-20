@@ -1,6 +1,6 @@
 // npx vitest run src/shared/__tests__/checkExistApiConfig.spec.ts
 
-import { providerIdentifiers, type ProviderSettings } from "@roo-code/types"
+import { providerIdentifiers, retiredProviderIdentifiers, type ProviderSettings } from "@roo-code/types"
 
 import { checkExistKey } from "../checkExistApiConfig"
 
@@ -86,7 +86,7 @@ describe("checkExistKey", () => {
 
 	it("should return false for roo provider without API key", () => {
 		const config: ProviderSettings = {
-			apiProvider: "roo",
+			apiProvider: retiredProviderIdentifiers.roo,
 		}
 		expect(checkExistKey(config)).toBe(false)
 	})

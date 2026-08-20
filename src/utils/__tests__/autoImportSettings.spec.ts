@@ -77,7 +77,7 @@ import { autoImportSettings } from "../autoImportSettings"
 import * as vscode from "vscode"
 import fsPromises from "fs/promises"
 import { fileExistsAtPath } from "../fs"
-import { providerIdentifiers } from "@roo-code/types/provider-identifiers"
+import { providerIdentifiers, retiredProviderIdentifiers } from "@roo-code/types/provider-identifiers"
 
 describe("autoImportSettings", () => {
 	let mockProviderSettingsManager: any
@@ -242,7 +242,7 @@ describe("autoImportSettings", () => {
 				},
 			},
 			globalSettings: {
-				imageGenerationProvider: "roo",
+				imageGenerationProvider: retiredProviderIdentifiers.roo,
 				customInstructions: "Test instructions",
 			},
 		}

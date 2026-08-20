@@ -8,7 +8,7 @@ import { clearAllMocks } from "../../../test-utils/reset"
 import { makeExtensionContext, makeUri } from "../../../test-utils/vscode"
 
 import { ContextProxy } from "../ContextProxy"
-import { providerIdentifiers } from "@roo-code/types/provider-identifiers"
+import { providerIdentifiers, retiredProviderIdentifiers } from "@roo-code/types/provider-identifiers"
 
 vi.mock("vscode", () => ({
 	Uri: {
@@ -566,7 +566,7 @@ describe("ContextProxy", () => {
 
 		it("should preserve retired apiProvider and provider fields", async () => {
 			await proxy.setValues({
-				apiProvider: "groq",
+				apiProvider: retiredProviderIdentifiers.groq,
 				apiModelId: "llama3-70b",
 				openAiBaseUrl: "https://api.retired-provider.example/v1",
 				apiKey: "retired-provider-key",

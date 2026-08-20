@@ -197,7 +197,7 @@ vi.mock("../../mentions/resolveImageMentions", () => ({
 import { resolveImageMentions } from "../../mentions/resolveImageMentions"
 import { Terminal } from "../../../integrations/terminal/Terminal"
 import { TerminalRegistry } from "../../../integrations/terminal/TerminalRegistry"
-import { providerIdentifiers } from "@roo-code/types/provider-identifiers"
+import { providerIdentifiers, retiredProviderIdentifiers } from "@roo-code/types/provider-identifiers"
 
 describe("webviewMessageHandler - requestLmStudioModels", () => {
 	beforeEach(() => {
@@ -894,7 +894,7 @@ describe("webviewMessageHandler - requestRouterModels", () => {
 			type: "singleRouterModelFetchResponse",
 			success: false,
 			error: "Roo Code Router has been removed. Please select and configure a different provider.",
-			values: { provider: "roo" },
+			values: { provider: retiredProviderIdentifiers.roo },
 		})
 	})
 
