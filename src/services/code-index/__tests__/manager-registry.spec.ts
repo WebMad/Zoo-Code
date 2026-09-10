@@ -2,6 +2,13 @@ import * as vscode from "vscode"
 import { makeExtensionContext, makeTextEditor, makeUri } from "../../../test-utils/vscode"
 import { CodeIndexManager } from "../manager"
 import { CodeIndexManagerRegistry } from "../manager-registry"
+import { CodeIndexScope } from "../code-index-scope"
+
+vi.mock("../state-manager", () => ({
+	CodeIndexStateManager: vi.fn().mockImplementation(function () {
+		return {}
+	}),
+}))
 
 vi.mock("vscode", () => ({
 	window: { activeTextEditor: undefined },
@@ -38,6 +45,23 @@ describe("CodeIndexManagerRegistry", () => {
 
 	afterEach(() => CodeIndexManagerRegistry.disposeAll())
 
+	it("retains the scope that owns the manager returned to consumers", () => {
+		const scope = CodeIndexManagerRegistry.getScope(context)
+		expect(scope).toBeInstanceOf(CodeIndexScope)
+		expect(CodeIndexManagerRegistry.getScope(context, first.uri.fsPath)).toBe(scope)
+		expect(CodeIndexManagerRegistry.getInstance(context)).toBe(scope?.codeIndexManager)
+		expect(CodeIndexManagerRegistry.getAllScopes()).toEqual([scope])
+	})
+
+	it("disposes through the owning scope", () => {
+		const scope = CodeIndexManagerRegistry.getScope(context)
+		if (!scope) throw new Error("Expected a workspace scope")
+		const dispose = vi.spyOn(scope, "dispose")
+		CodeIndexManagerRegistry.disposeAll()
+		expect(dispose).toHaveBeenCalledOnce()
+		expect(CodeIndexManagerRegistry.getAllScopes()).toEqual([])
+	})
+
 	it("returns no manager without a workspace or explicit path", () => {
 		Object.defineProperty(vscode.workspace, "workspaceFolders", { value: undefined })
 		expect(CodeIndexManagerRegistry.getInstance(context)).toBeUndefined()
@@ -47,7 +71,12 @@ describe("CodeIndexManagerRegistry", () => {
 	it("defaults to the first workspace and reuses its manager", () => {
 		const manager = CodeIndexManagerRegistry.getInstance(context)
 		expect(CodeIndexManagerRegistry.getInstance(context, first.uri.fsPath)).toBe(manager)
-		expect(CodeIndexManager).toHaveBeenCalledExactlyOnceWith(first.uri.fsPath, first.uri, context)
+		expect(CodeIndexManager).toHaveBeenCalledExactlyOnceWith(
+			first.uri.fsPath,
+			first.uri,
+			context,
+			expect.any(Object),
+		)
 	})
 
 	it("uses the active editor workspace and preserves its remote URI", () => {
@@ -56,20 +85,20 @@ describe("CodeIndexManagerRegistry", () => {
 		vi.mocked(vscode.workspace.getWorkspaceFolder).mockReturnValue(second)
 		CodeIndexManagerRegistry.getInstance(context)
 		expect(vscode.workspace.getWorkspaceFolder).toHaveBeenCalledWith(editor.document.uri)
-		expect(CodeIndexManager).toHaveBeenCalledWith(second.uri.fsPath, second.uri, context)
+		expect(CodeIndexManager).toHaveBeenCalledWith(second.uri.fsPath, second.uri, context, expect.any(Object))
 	})
 
 	it("falls back to the first workspace when the active editor is outside it", () => {
 		Object.defineProperty(vscode.window, "activeTextEditor", { value: makeTextEditor() })
 		CodeIndexManagerRegistry.getInstance(context)
-		expect(CodeIndexManager).toHaveBeenCalledWith(first.uri.fsPath, first.uri, context)
+		expect(CodeIndexManager).toHaveBeenCalledWith(first.uri.fsPath, first.uri, context, expect.any(Object))
 	})
 
 	it("prefers an explicit workspace over the active editor", () => {
 		Object.defineProperty(vscode.window, "activeTextEditor", { value: makeTextEditor() })
 		vi.mocked(vscode.workspace.getWorkspaceFolder).mockReturnValue(first)
 		CodeIndexManagerRegistry.getInstance(context, second.uri.fsPath)
-		expect(CodeIndexManager).toHaveBeenCalledWith(second.uri.fsPath, second.uri, context)
+		expect(CodeIndexManager).toHaveBeenCalledWith(second.uri.fsPath, second.uri, context, expect.any(Object))
 		expect(vscode.workspace.getWorkspaceFolder).not.toHaveBeenCalled()
 	})
 
@@ -79,7 +108,7 @@ describe("CodeIndexManagerRegistry", () => {
 		vi.mocked(vscode.Uri.file).mockReturnValue(uri)
 		CodeIndexManagerRegistry.getInstance(context, "/outside")
 		expect(vscode.Uri.file).toHaveBeenCalledWith("/outside")
-		expect(CodeIndexManager).toHaveBeenCalledWith("/outside", uri, context)
+		expect(CodeIndexManager).toHaveBeenCalledWith("/outside", uri, context, expect.any(Object))
 	})
 
 	it("creates distinct managers for different workspaces", () => {

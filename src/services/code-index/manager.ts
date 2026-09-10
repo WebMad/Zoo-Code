@@ -3,7 +3,7 @@ import { ContextProxy } from "../../core/config/ContextProxy"
 import { VectorStoreSearchResult } from "./interfaces"
 import { IndexingState } from "./interfaces/manager"
 import { CodeIndexConfigManager } from "./config-manager"
-import { CodeIndexStateManager } from "./state-manager"
+import type { CodeIndexStateManager } from "./state-manager"
 import { CodeIndexServiceFactory } from "./service-factory"
 import { CodeIndexSearchService } from "./search-service"
 import { CodeIndexOrchestrator } from "./orchestrator"
@@ -34,11 +34,16 @@ export class CodeIndexManager {
 	private readonly _folderUri: vscode.Uri
 	private readonly context: vscode.ExtensionContext
 
-	public constructor(workspacePath: string, folderUri: vscode.Uri, context: vscode.ExtensionContext) {
+	public constructor(
+		workspacePath: string,
+		folderUri: vscode.Uri,
+		context: vscode.ExtensionContext,
+		stateManager: CodeIndexStateManager,
+	) {
 		this.workspacePath = workspacePath
 		this._folderUri = folderUri
 		this.context = context
-		this._stateManager = new CodeIndexStateManager()
+		this._stateManager = stateManager
 	}
 
 	// --- Public API ---

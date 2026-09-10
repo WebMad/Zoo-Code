@@ -3215,6 +3215,7 @@ describe("webviewMessageHandler no-floating-promises coverage", () => {
 		Object.defineProperty(manager, "isWorkspaceEnabled", { get: () => workspaceEnabled })
 		const getAllInstances = vi
 			.spyOn(CodeIndexManagerRegistry, "getAllInstances")
+			// This handler fixture supplies only the manager operations exercised by the scenario.
 			.mockReturnValue([manager] as unknown as ReturnType<typeof CodeIndexManagerRegistry.getAllInstances>)
 		const provider = createProvider({
 			getCurrentWorkspaceCodeIndexManager: vi.fn().mockReturnValue(manager),

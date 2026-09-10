@@ -3316,7 +3316,7 @@ export const webviewMessageHandler = async (
 				await manager.setAutoEnableDefault(message.bool ?? true)
 				// Apply stop/start to every affected manager
 				for (const m of allManagers) {
-					const wasEnabled = priorStates.get(m)!
+					const wasEnabled = priorStates.get(m)
 					const isNowEnabled = m.isWorkspaceEnabled
 					if (wasEnabled && !isNowEnabled) {
 						m.stopIndexing()
