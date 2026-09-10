@@ -213,8 +213,6 @@ export async function activate(context: vscode.ExtensionContext) {
 						`[CodeIndexManager] Error during background CodeIndexManager configuration/indexing for ${folder.uri.fsPath}: ${message}`,
 					)
 				})
-
-				context.subscriptions.push(manager)
 			}
 		}
 	}
@@ -384,6 +382,14 @@ export async function activate(context: vscode.ExtensionContext) {
 // This method is called when your extension is deactivated.
 export async function deactivate() {
 	outputChannel.appendLine(`${Package.name} extension deactivated`)
+
+	try {
+		CodeIndexManagerRegistry.disposeAll()
+	} catch (error) {
+		outputChannel.appendLine(
+			`Failed to dispose code index managers: ${error instanceof Error ? error.message : String(error)}`,
+		)
+	}
 
 	if (cloudService && CloudService.hasInstance()) {
 		try {

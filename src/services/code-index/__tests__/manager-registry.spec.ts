@@ -121,4 +121,27 @@ describe("CodeIndexManagerRegistry", () => {
 		CodeIndexManagerRegistry.disposeAll()
 		expect(CodeIndexManagerRegistry.getInstance(context, first.uri.fsPath)).not.toBe(manager)
 	})
+
+	it("attempts every disposal and rethrows the first error", () => {
+		const a = CodeIndexManagerRegistry.getInstance(context, first.uri.fsPath)!
+		const b = CodeIndexManagerRegistry.getInstance(context, second.uri.fsPath)!
+		const firstError = new Error("first cleanup failed")
+		vi.mocked(a.dispose).mockImplementation(() => {
+			throw firstError
+		})
+		vi.mocked(b.dispose).mockImplementation(() => {
+			throw new Error("second cleanup failed")
+		})
+		expect(() => CodeIndexManagerRegistry.disposeAll()).toThrow(firstError)
+		expect(b.dispose).toHaveBeenCalledTimes(1)
+		expect(CodeIndexManagerRegistry.getAllInstances()).toEqual([])
+	})
+
+	it("clears the registry before disposal callbacks run", () => {
+		const manager = CodeIndexManagerRegistry.getInstance(context, first.uri.fsPath)!
+		vi.mocked(manager.dispose).mockImplementation(() => {
+			expect(CodeIndexManagerRegistry.getAllInstances()).toEqual([])
+		})
+		CodeIndexManagerRegistry.disposeAll()
+	})
 })

@@ -142,6 +142,7 @@ vi.mock("../services/mcp/McpServerManager", () => ({
 vi.mock("../services/code-index/manager-registry", () => ({
 	CodeIndexManagerRegistry: {
 		getInstance: vi.fn().mockReturnValue(null),
+		disposeAll: vi.fn(),
 	},
 }))
 
@@ -457,6 +458,26 @@ describe("extension.ts", () => {
 	describe("deactivate", () => {
 		beforeEach(() => {
 			vi.resetModules()
+		})
+
+		test("disposes the code index registry on deactivation", async () => {
+			const { CodeIndexManagerRegistry } = await import("../services/code-index/manager-registry")
+			const { activate, deactivate } = await import("../extension")
+			await activate(mockContext)
+			await deactivate()
+			expect(CodeIndexManagerRegistry.disposeAll).toHaveBeenCalledTimes(1)
+		})
+
+		test("continues cleanup when disposing the code index registry fails", async () => {
+			const { CodeIndexManagerRegistry } = await import("../services/code-index/manager-registry")
+			const { TerminalRegistry } = await import("../integrations/terminal/TerminalRegistry")
+			const { activate, deactivate } = await import("../extension")
+			await activate(mockContext)
+			vi.mocked(CodeIndexManagerRegistry.disposeAll).mockImplementationOnce(() => {
+				throw new Error("index cleanup failed")
+			})
+			await expect(deactivate()).resolves.toBeUndefined()
+			expect(TerminalRegistry.cleanup).toHaveBeenCalledTimes(1)
 		})
 
 		test("still runs terminal cleanup when telemetry shutdown rejects", async () => {

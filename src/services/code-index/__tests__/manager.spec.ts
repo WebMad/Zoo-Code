@@ -4,6 +4,7 @@ import { CodeIndexServiceFactory } from "../service-factory"
 import type { MockedClass } from "vitest"
 import * as path from "path"
 import { providerIdentifiers } from "@roo-code/types/provider-identifiers"
+import { makeExtensionContext } from "../../../test-utils/vscode"
 
 // Helper: create a mock vscode.Uri from an fsPath
 function mockUri(fsPath: string, scheme = "file") {
@@ -744,20 +745,24 @@ describe("CodeIndexManager - handleSettingsChange regression", () => {
 			const folderBUri = mockUri(folderBPath)
 
 			// Both folders share the same workspaceState (same window)
-			const sharedStore: Record<string, any> = {}
-			const sharedContext = {
-				...mockContext,
+			const sharedStore: Record<string, unknown> = {}
+			const sharedContext = makeExtensionContext({
 				workspaceState: {
-					get: vi.fn((key: string, defaultValue?: any) => sharedStore[key] ?? defaultValue),
-					update: vi.fn(async (key: string, value: any) => {
+					get: vi.fn(
+						<T>(key: string, defaultValue?: T) => (sharedStore[key] as T | undefined) ?? defaultValue,
+					),
+					update: vi.fn(async (key: string, value: unknown) => {
 						sharedStore[key] = value
 					}),
-				} as any,
+					keys: () => Object.keys(sharedStore),
+				},
 				globalState: {
-					get: vi.fn((_key: string, _defaultValue?: any) => false),
+					get: vi.fn(<T>(_key: string, _defaultValue?: T) => false as T),
 					update: vi.fn(),
-				} as any,
-			}
+					keys: () => [],
+					setKeysForSync: vi.fn(),
+				},
+			})
 
 			// Patch workspaceFolders to include both folders
 			;(vscode.workspace as any).workspaceFolders = [
@@ -765,8 +770,8 @@ describe("CodeIndexManager - handleSettingsChange regression", () => {
 				{ uri: folderBUri, name: "folderB", index: 1 },
 			]
 
-			const managerA = CodeIndexManagerRegistry.getInstance(sharedContext as any, folderAPath)!
-			const managerB = CodeIndexManagerRegistry.getInstance(sharedContext as any, folderBPath)!
+			const managerA = CodeIndexManagerRegistry.getInstance(sharedContext, folderAPath)!
+			const managerB = CodeIndexManagerRegistry.getInstance(sharedContext, folderBPath)!
 
 			// Both start disabled (autoEnableDefault is false via globalState mock)
 			expect(managerA.isWorkspaceEnabled).toBe(false)

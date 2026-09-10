@@ -51,9 +51,18 @@ export class CodeIndexManagerRegistry {
 	}
 
 	public static disposeAll(): void {
-		for (const instance of this.instances) {
-			instance.dispose()
-		}
+		const instances = this.getAllInstances()
 		CodeIndexManagerRegistry.managersByWorkspacePath.clear()
+		const errors: unknown[] = []
+		for (const instance of instances) {
+			try {
+				instance.dispose()
+			} catch (error) {
+				errors.push(error)
+			}
+		}
+		if (errors.length > 0) {
+			throw errors[0]
+		}
 	}
 }
