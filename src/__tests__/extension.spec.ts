@@ -469,6 +469,7 @@ describe("extension.ts", () => {
 		})
 
 		test("continues cleanup when disposing the code index registry fails", async () => {
+			const vscode = await import("vscode")
 			const { CodeIndexManagerRegistry } = await import("../services/code-index/manager-registry")
 			const { TerminalRegistry } = await import("../integrations/terminal/TerminalRegistry")
 			const { activate, deactivate } = await import("../extension")
@@ -477,6 +478,10 @@ describe("extension.ts", () => {
 				throw new Error("index cleanup failed")
 			})
 			await expect(deactivate()).resolves.toBeUndefined()
+			const channel = vi.mocked(vscode.window.createOutputChannel).mock.results.at(-1)?.value
+			expect(channel?.appendLine).toHaveBeenCalledWith(
+				"Failed to dispose code index managers: index cleanup failed",
+			)
 			expect(TerminalRegistry.cleanup).toHaveBeenCalledTimes(1)
 		})
 
