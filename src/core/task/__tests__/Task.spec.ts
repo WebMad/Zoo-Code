@@ -132,9 +132,9 @@ vi.mock("p-wait-for", () => ({
 }))
 
 // Task tests do not exercise indexing; keep workspace resolution and its cache out of this suite.
-vi.mock("../../../services/code-index/code-index-manager-registry", () => ({
-	CodeIndexManagerRegistry: {
-		getInstance: vi.fn().mockReturnValue(undefined),
+vi.mock("../../../services/code-index/code-index-workspace-scope-registry", () => ({
+	codeIndexWorkspaceScopeRegistry: {
+		getScope: vi.fn().mockReturnValue(undefined),
 	},
 }))
 
