@@ -14,7 +14,7 @@ import { formatLanguage } from "../../shared/language"
 import { isEmpty } from "../../utils/object"
 
 import { McpHub } from "../../services/mcp/McpHub"
-import { CodeIndexManagerRegistry } from "../../services/code-index/code-index-manager-registry"
+import { codeIndexWorkspaceScopeRegistry } from "../../services/code-index/code-index-workspace-scope-registry"
 import { SkillsManager } from "../../services/skills/SkillsManager"
 
 import type { SystemPromptSettings } from "./types"
@@ -74,7 +74,7 @@ async function generatePrompt(
 	const modeConfig = getModeBySlug(mode, customModeConfigs) || modes.find((m) => m.slug === mode) || modes[0]
 	const { roleDefinition, baseInstructions } = getModeSelection(mode, promptComponent, customModeConfigs)
 
-	const codeIndexManager = CodeIndexManagerRegistry.getOrCreate(context, cwd)
+	const codeIndexManager = codeIndexWorkspaceScopeRegistry.getScope(context, cwd)?.codeIndexManager
 
 	// Resolve the single, request-scoped effective tool policy ONCE, then have every
 	// prompt section and the MCP short-circuit derive from it. This is the one source of

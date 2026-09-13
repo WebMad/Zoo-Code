@@ -98,9 +98,10 @@ export async function buildNativeToolsArrayWithRestrictions(options: BuildToolsO
 
 	const mcpHub = provider.getMcpHub()
 
-	// Get CodeIndexManager for feature checking.
-	const { CodeIndexManagerRegistry } = await import("../../services/code-index/code-index-manager-registry")
-	const codeIndexManager = CodeIndexManagerRegistry.getOrCreate(provider.context, cwd)
+	// Get the workspace scope for code-index feature checking.
+	const { codeIndexWorkspaceScopeRegistry } =
+		await import("../../services/code-index/code-index-workspace-scope-registry")
+	const codeIndexWorkspaceScope = codeIndexWorkspaceScopeRegistry.getScope(provider.context, cwd)
 
 	// Build settings object for tool filtering.
 	const filterSettings = {
@@ -129,7 +130,7 @@ export async function buildNativeToolsArrayWithRestrictions(options: BuildToolsO
 		mode,
 		customModes,
 		experiments,
-		codeIndexManager,
+		codeIndexWorkspaceScope,
 		filterSettings,
 		mcpHub,
 		allowedMcpServers,
