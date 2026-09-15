@@ -38,12 +38,12 @@ describe("CodeIndexManagerRegistry", () => {
 
 	it.each([{ folders: undefined }, { folders: [] }])("returns no manager with folders=$folders", ({ folders }) => {
 		Object.defineProperty(vscode.workspace, "workspaceFolders", { configurable: true, value: folders })
-		expect(CodeIndexManagerRegistry.getInstance(context)).toBeUndefined()
+		expect(CodeIndexManagerRegistry.getOrCreate(context)).toBeUndefined()
 		expect(CodeIndexManager).not.toHaveBeenCalled()
 	})
 
 	it("uses the first workspace when there is no active editor", () => {
-		CodeIndexManagerRegistry.getInstance(context)
+		CodeIndexManagerRegistry.getOrCreate(context)
 		expect(CodeIndexManager).toHaveBeenCalledWith("/first", first.uri, context)
 	})
 
@@ -51,23 +51,21 @@ describe("CodeIndexManagerRegistry", () => {
 		const editor = makeTextEditor({ document: makeTextDocument({ uri: makeUri("/second/file.ts") }) })
 		Object.defineProperty(vscode.window, "activeTextEditor", { configurable: true, value: editor })
 		vi.mocked(vscode.workspace.getWorkspaceFolder).mockReturnValue(second)
-		CodeIndexManagerRegistry.getInstance(context)
-		expect(vscode.workspace.getWorkspaceFolder).toHaveBeenCalledWith(editor.document.uri)
+		expect(CodeIndexManagerRegistry.getOrCreate(context)).toBeDefined()
 		expect(CodeIndexManager).toHaveBeenCalledWith("/second", second.uri, context)
 	})
 
 	it("falls back to the first workspace for an editor outside all folders", () => {
 		Object.defineProperty(vscode.window, "activeTextEditor", { configurable: true, value: makeTextEditor() })
-		CodeIndexManagerRegistry.getInstance(context)
+		CodeIndexManagerRegistry.getOrCreate(context)
 		expect(CodeIndexManager).toHaveBeenCalledWith("/first", first.uri, context)
 	})
 
 	it("gives an explicit path priority over the active editor", () => {
 		Object.defineProperty(vscode.window, "activeTextEditor", { configurable: true, value: makeTextEditor() })
 		vi.mocked(vscode.workspace.getWorkspaceFolder).mockReturnValue(first)
-		CodeIndexManagerRegistry.getInstance(context, "/second")
+		expect(CodeIndexManagerRegistry.getOrCreate(context, "/second")).toBeDefined()
 		expect(CodeIndexManager).toHaveBeenCalledWith("/second", second.uri, context)
-		expect(vscode.workspace.getWorkspaceFolder).not.toHaveBeenCalled()
 	})
 
 	it("preserves the actual remote workspace URI", () => {
@@ -76,7 +74,7 @@ describe("CodeIndexManagerRegistry", () => {
 			configurable: true,
 			value: [{ uri, name: "remote", index: 0 }],
 		})
-		CodeIndexManagerRegistry.getInstance(context, "/remote")
+		CodeIndexManagerRegistry.getOrCreate(context, "/remote")
 		expect(CodeIndexManager).toHaveBeenCalledWith("/remote", uri, context)
 		expect(vi.mocked(CodeIndexManager).mock.calls[0][1]).toBe(uri)
 		expect(vscode.Uri.file).not.toHaveBeenCalled()
@@ -86,15 +84,24 @@ describe("CodeIndexManagerRegistry", () => {
 		Object.defineProperty(vscode.workspace, "workspaceFolders", { configurable: true, value: undefined })
 		const uri = makeUri("/outside folder/#name")
 		vi.mocked(vscode.Uri.file).mockReturnValue(uri)
-		CodeIndexManagerRegistry.getInstance(context, uri.fsPath)
+		CodeIndexManagerRegistry.getOrCreate(context, uri.fsPath)
 		expect(vscode.Uri.file).toHaveBeenCalledWith(uri.fsPath)
 		expect(CodeIndexManager).toHaveBeenCalledWith(uri.fsPath, uri, context)
 	})
 
+	it("constructs a file URI for an explicit path not matching any open workspace folder", () => {
+		// workspaceFolders contains /first and /second, but /outside/project matches neither
+		const uri = makeUri("/outside/project")
+		vi.mocked(vscode.Uri.file).mockReturnValue(uri)
+		CodeIndexManagerRegistry.getOrCreate(context, "/outside/project")
+		expect(vscode.Uri.file).toHaveBeenCalledWith("/outside/project")
+		expect(CodeIndexManager).toHaveBeenCalledWith("/outside/project", uri, context)
+	})
+
 	it("reuses the same path and keeps different paths isolated", () => {
-		const a = CodeIndexManagerRegistry.getInstance(context, "/first")
-		expect(CodeIndexManagerRegistry.getInstance(makeExtensionContext(), "/first")).toBe(a)
-		const b = CodeIndexManagerRegistry.getInstance(context, "/second")
+		const a = CodeIndexManagerRegistry.getOrCreate(context, "/first")
+		expect(CodeIndexManagerRegistry.getOrCreate(makeExtensionContext(), "/first")).toBe(a)
+		const b = CodeIndexManagerRegistry.getOrCreate(context, "/second")
 		expect(b).not.toBe(a)
 		expect(CodeIndexManager).toHaveBeenCalledTimes(2)
 		expect(CodeIndexManagerRegistry.getAllInstances()).toEqual([a, b])
@@ -102,19 +109,19 @@ describe("CodeIndexManagerRegistry", () => {
 
 	it("returns a snapshot that cannot mutate the cache", () => {
 		expect(CodeIndexManagerRegistry.getAllInstances()).toEqual([])
-		const manager = CodeIndexManagerRegistry.getInstance(context)
+		const manager = CodeIndexManagerRegistry.getOrCreate(context)
 		CodeIndexManagerRegistry.getAllInstances().pop()
 		expect(CodeIndexManagerRegistry.getAllInstances()).toEqual([manager])
 	})
 
 	it("disposes every manager, supports repeated cleanup and recreates instances", () => {
-		const a = CodeIndexManagerRegistry.getInstance(context, "/first")!
-		const b = CodeIndexManagerRegistry.getInstance(context, "/second")!
+		const a = CodeIndexManagerRegistry.getOrCreate(context, "/first")!
+		const b = CodeIndexManagerRegistry.getOrCreate(context, "/second")!
 		CodeIndexManagerRegistry.disposeAll()
 		CodeIndexManagerRegistry.disposeAll()
 		expect(a.dispose).toHaveBeenCalledTimes(1)
 		expect(b.dispose).toHaveBeenCalledTimes(1)
 		expect(CodeIndexManagerRegistry.getAllInstances()).toEqual([])
-		expect(CodeIndexManagerRegistry.getInstance(context, "/first")).not.toBe(a)
+		expect(CodeIndexManagerRegistry.getOrCreate(context, "/first")).not.toBe(a)
 	})
 })

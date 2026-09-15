@@ -161,7 +161,7 @@ describe("CodeIndexManager - handleSettingsChange regression", () => {
 			languageModelAccessInformation: {} as any,
 		}
 
-		manager = CodeIndexManagerRegistry.getInstance(mockContext)!
+		manager = CodeIndexManagerRegistry.getOrCreate(mockContext)!
 	})
 
 	afterEach(() => {
@@ -765,8 +765,8 @@ describe("CodeIndexManager - handleSettingsChange regression", () => {
 				{ uri: folderBUri, name: "folderB", index: 1 },
 			]
 
-			const managerA = CodeIndexManagerRegistry.getInstance(sharedContext, folderAPath)!
-			const managerB = CodeIndexManagerRegistry.getInstance(sharedContext, folderBPath)!
+			const managerA = CodeIndexManagerRegistry.getOrCreate(sharedContext, folderAPath)!
+			const managerB = CodeIndexManagerRegistry.getOrCreate(sharedContext, folderBPath)!
 
 			// Both start disabled (autoEnableDefault is false via globalState mock)
 			expect(managerA.isWorkspaceEnabled).toBe(false)

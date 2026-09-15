@@ -227,7 +227,7 @@ export const openClineInNewTab = async ({ context, outputChannel }: Omit<Registe
 	// don't need to use that event).
 	// https://github.com/microsoft/vscode-extension-samples/blob/main/webview-sample/src/extension.ts
 	const contextProxy = await ContextProxy.getInstance(context)
-	const codeIndexManager = CodeIndexManagerRegistry.getInstance(context)
+	const codeIndexManager = CodeIndexManagerRegistry.getOrCreate(context)
 
 	// Get the existing MDM service instance to ensure consistent policy enforcement
 	let mdmService: MdmService | undefined

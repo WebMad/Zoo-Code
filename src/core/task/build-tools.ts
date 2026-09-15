@@ -97,7 +97,7 @@ export async function buildNativeToolsArrayWithRestrictions(options: BuildToolsO
 
 	// Get CodeIndexManager for feature checking.
 	const { CodeIndexManagerRegistry } = await import("../../services/code-index/code-index-manager-registry")
-	const codeIndexManager = CodeIndexManagerRegistry.getInstance(provider.context, cwd)
+	const codeIndexManager = CodeIndexManagerRegistry.getOrCreate(provider.context, cwd)
 
 	// Build settings object for tool filtering.
 	const filterSettings = {

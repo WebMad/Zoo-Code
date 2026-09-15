@@ -5,7 +5,7 @@ import { CodeIndexManager } from "./manager"
 export class CodeIndexManagerRegistry {
 	private static instances = new Map<string, CodeIndexManager>()
 
-	public static getInstance(context: vscode.ExtensionContext, workspacePath?: string): CodeIndexManager | undefined {
+	public static getOrCreate(context: vscode.ExtensionContext, workspacePath?: string): CodeIndexManager | undefined {
 		const folder = this.resolveWorkspaceFolder(workspacePath)
 		const resolvedPath = workspacePath || folder?.uri.fsPath
 		if (!resolvedPath) {

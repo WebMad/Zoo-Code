@@ -69,7 +69,7 @@ vi.mock("../../core/config/importExport", () => ({
 
 vi.mock("../../services/code-index/code-index-manager-registry", () => ({
 	CodeIndexManagerRegistry: {
-		getInstance: vi.fn(),
+		getOrCreate: vi.fn(),
 	},
 }))
 

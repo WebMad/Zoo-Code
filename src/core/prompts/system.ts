@@ -79,7 +79,7 @@ async function generatePrompt(
 	}
 	const shouldIncludeMcp = hasMcpGroup && hasMcpServers
 
-	const codeIndexManager = CodeIndexManagerRegistry.getInstance(context, cwd)
+	const codeIndexManager = CodeIndexManagerRegistry.getOrCreate(context, cwd)
 
 	// Tool calling is native-only.
 	const effectiveProtocol = "native"
