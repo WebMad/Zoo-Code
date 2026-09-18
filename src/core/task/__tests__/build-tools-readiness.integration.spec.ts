@@ -1,4 +1,5 @@
 import type OpenAI from "openai"
+import { toolNamesSchema } from "@roo-code/types"
 import type { CodeIndexManager } from "../../../services/code-index/manager"
 import { CodeIndexManagerRegistry } from "../../../services/code-index/code-index-manager-registry"
 import { makeExtensionContext } from "../../../test-utils/vscode"
@@ -9,66 +10,177 @@ vi.mock("../../../services/code-index/code-index-manager-registry", () => ({
 	CodeIndexManagerRegistry: { getOrCreate: vi.fn() },
 }))
 
-function toolNames(tools: OpenAI.Chat.ChatCompletionTool[]) {
-	return tools.flatMap((tool) => ("function" in tool ? [tool.function.name] : []))
+const tools = toolNamesSchema.enum
+const ordinaryReadTools = [tools.read_file, tools.list_files, tools.search_files]
+
+function toolNames(definitions: OpenAI.Chat.ChatCompletionTool[]) {
+	return definitions.flatMap((tool) => ("function" in tool ? [tool.function.name] : []))
 }
 
-describe("task tool building with real readiness filtering", () => {
-	beforeEach(() => vi.clearAllMocks())
+function makeManager(flags: Pick<CodeIndexManager, "isFeatureEnabled" | "isFeatureConfigured" | "isInitialized">) {
+	// The real filter only consumes these public readiness getters, not manager services.
+	return flags as CodeIndexManager
+}
 
-	it.each([false, true])("uses task cwd/context and live manager readiness (restrictions=%s)", async (restricted) => {
+describe.each([
+	{ strategy: "filtered definitions", includeAllToolsWithRestrictions: false },
+	{ strategy: "all definitions with an allowlist", includeAllToolsWithRestrictions: true },
+])("task readiness with $strategy", ({ includeAllToolsWithRestrictions }) => {
+	beforeEach(() => vi.mocked(CodeIndexManagerRegistry.getOrCreate).mockReset())
+
+	function makeOptions() {
 		const context = makeExtensionContext()
-		// The builder only consumes context and getMcpHub; avoid constructing the webview provider.
+		// Only context and getMcpHub are needed; constructing a webview provider is unrelated to this test.
 		const provider = { context, getMcpHub: () => undefined } as ClineProvider
-		const flags = { isFeatureEnabled: true, isFeatureConfigured: true, isInitialized: true }
-		// Only the public readiness getters are consumed by the real filter.
-		const readyManager = flags as CodeIndexManager
-		const unreadyManager = { ...flags, isInitialized: false } as CodeIndexManager
+		return {
+			provider,
+			cwd: "/tasks/ready",
+			mode: "code",
+			customModes: [],
+			experiments: {},
+			apiConfiguration: {},
+			includeAllToolsWithRestrictions,
+		}
+	}
+
+	it("uses the task context and cwd without leaking readiness between workspaces", async () => {
+		const options = makeOptions()
+		const ready = makeManager({ isFeatureEnabled: true, isFeatureConfigured: true, isInitialized: true })
+		const unready = makeManager({ isFeatureEnabled: true, isFeatureConfigured: true, isInitialized: false })
 		const managers = new Map([
-			["/tasks/ready", readyManager],
-			["/tasks/unready", unreadyManager],
+			["/tasks/ready", ready],
+			["/tasks/unready", unready],
 		])
-		vi.mocked(CodeIndexManagerRegistry.getOrCreate).mockImplementation((receivedContext, cwd) => {
-			expect(receivedContext).toBe(context)
-			return managers.get(cwd ?? "")
+		vi.mocked(CodeIndexManagerRegistry.getOrCreate).mockImplementation((_context, cwd) => managers.get(cwd ?? ""))
+
+		const first = await buildNativeToolsArrayWithRestrictions(options)
+		expect(CodeIndexManagerRegistry.getOrCreate).toHaveBeenLastCalledWith(options.provider.context, "/tasks/ready")
+		expect(includeAllToolsWithRestrictions ? first.allowedFunctionNames : toolNames(first.tools)).toContain(
+			tools.codebase_search,
+		)
+
+		const other = await buildNativeToolsArrayWithRestrictions({ ...options, cwd: "/tasks/unready" })
+		expect(CodeIndexManagerRegistry.getOrCreate).toHaveBeenLastCalledWith(
+			options.provider.context,
+			"/tasks/unready",
+		)
+		if (includeAllToolsWithRestrictions) {
+			expect(other.allowedFunctionNames).toBeDefined()
+			expect(other.allowedFunctionNames).not.toContain(tools.codebase_search)
+			// Keep definitions for historical calls, while forbidding new calls.
+			expect(toolNames(other.tools)).toContain(tools.codebase_search)
+		} else {
+			expect(other.allowedFunctionNames).toBeUndefined()
+			expect(toolNames(other.tools)).not.toContain(tools.codebase_search)
+		}
+
+		const restored = await buildNativeToolsArrayWithRestrictions(options)
+		expect(CodeIndexManagerRegistry.getOrCreate).toHaveBeenLastCalledWith(options.provider.context, "/tasks/ready")
+		expect(includeAllToolsWithRestrictions ? restored.allowedFunctionNames : toolNames(restored.tools)).toContain(
+			tools.codebase_search,
+		)
+		expect(CodeIndexManagerRegistry.getOrCreate).toHaveBeenCalledTimes(3)
+	})
+
+	it("omits search without a manager while retaining ordinary read tools", async () => {
+		vi.mocked(CodeIndexManagerRegistry.getOrCreate).mockReturnValue(undefined)
+		const result = await buildNativeToolsArrayWithRestrictions({ ...makeOptions(), cwd: "/tasks/missing" })
+
+		if (includeAllToolsWithRestrictions) {
+			expect(result.allowedFunctionNames).toBeDefined()
+			expect(result.allowedFunctionNames).not.toContain(tools.codebase_search)
+			expect(toolNames(result.tools)).toContain(tools.codebase_search)
+		} else {
+			expect(result.allowedFunctionNames).toBeUndefined()
+			expect(toolNames(result.tools)).not.toContain(tools.codebase_search)
+		}
+		for (const tool of ordinaryReadTools) {
+			expect(includeAllToolsWithRestrictions ? result.allowedFunctionNames : toolNames(result.tools)).toContain(
+				tool,
+			)
+		}
+	})
+
+	it.each(["isFeatureEnabled", "isFeatureConfigured", "isInitialized"] as const)(
+		"rereads %s on subsequent builds with the same manager",
+		async (flag) => {
+			const options = makeOptions()
+			const flags = { isFeatureEnabled: true, isFeatureConfigured: true, isInitialized: true }
+			vi.mocked(CodeIndexManagerRegistry.getOrCreate).mockReturnValue(makeManager(flags))
+
+			const initial = await buildNativeToolsArrayWithRestrictions(options)
+			expect(includeAllToolsWithRestrictions ? initial.allowedFunctionNames : toolNames(initial.tools)).toContain(
+				tools.codebase_search,
+			)
+
+			flags[flag] = false
+			const unavailable = await buildNativeToolsArrayWithRestrictions(options)
+			if (includeAllToolsWithRestrictions) {
+				expect(unavailable.allowedFunctionNames).toBeDefined()
+				expect(unavailable.allowedFunctionNames).not.toContain(tools.codebase_search)
+				expect(toolNames(unavailable.tools)).toContain(tools.codebase_search)
+			} else {
+				expect(unavailable.allowedFunctionNames).toBeUndefined()
+				expect(toolNames(unavailable.tools)).not.toContain(tools.codebase_search)
+			}
+			for (const tool of ordinaryReadTools) {
+				expect(
+					includeAllToolsWithRestrictions ? unavailable.allowedFunctionNames : toolNames(unavailable.tools),
+				).toContain(tool)
+			}
+
+			flags[flag] = true
+			const recovered = await buildNativeToolsArrayWithRestrictions(options)
+			expect(
+				includeAllToolsWithRestrictions ? recovered.allowedFunctionNames : toolNames(recovered.tools),
+			).toContain(tools.codebase_search)
+		},
+	)
+
+	it("does not grant read tools to a command-only mode even with a ready manager", async () => {
+		vi.mocked(CodeIndexManagerRegistry.getOrCreate).mockReturnValue(
+			makeManager({ isFeatureEnabled: true, isFeatureConfigured: true, isInitialized: true }),
+		)
+		const result = await buildNativeToolsArrayWithRestrictions({
+			...makeOptions(),
+			mode: "no-read",
+			customModes: [{ slug: "no-read", name: "No read", roleDefinition: "No reading", groups: ["command"] }],
 		})
 
-		async function check(cwd: string, expected: boolean, mode = "code", disabledTools: string[] = []) {
-			const result = await buildNativeToolsArrayWithRestrictions({
-				provider,
-				cwd,
-				mode,
-				customModes: [{ slug: "no-read", name: "No read", roleDefinition: "No reading", groups: ["command"] }],
-				experiments: {},
-				apiConfiguration: {},
-				disabledTools,
-				includeAllToolsWithRestrictions: restricted,
-			})
-			expect(CodeIndexManagerRegistry.getOrCreate).toHaveBeenLastCalledWith(context, cwd)
-			const definitions = toolNames(result.tools)
-			const callable = restricted ? result.allowedFunctionNames : definitions
-			expect(callable).toBeDefined()
-			expect(callable?.includes("codebase_search")).toBe(expected)
-			expect(callable?.includes("read_file")).toBe(mode === "code")
-			if (restricted) {
-				// Historical definitions remain present; only allowedFunctionNames controls calls.
-				expect(definitions).toContain("codebase_search")
-			} else {
-				expect(result.allowedFunctionNames).toBeUndefined()
-			}
+		if (includeAllToolsWithRestrictions) {
+			expect(result.allowedFunctionNames).toBeDefined()
+			expect(toolNames(result.tools)).toContain(tools.codebase_search)
+		} else {
+			expect(result.allowedFunctionNames).toBeUndefined()
 		}
+		const callable = includeAllToolsWithRestrictions ? result.allowedFunctionNames : toolNames(result.tools)
+		for (const tool of [tools.codebase_search, ...ordinaryReadTools]) {
+			expect(callable).not.toContain(tool)
+		}
+		expect(callable).toContain(tools.execute_command)
+	})
 
-		await check("/tasks/ready", true)
-		await check("/tasks/unready", false)
-		await check("/tasks/missing", false)
-		await check("/tasks/ready", true)
-		for (const flag of ["isFeatureEnabled", "isFeatureConfigured", "isInitialized"] as const) {
-			flags[flag] = false
-			await check("/tasks/ready", false)
-			flags[flag] = true
-			await check("/tasks/ready", true)
+	it("honors disabledTools with a ready manager without disabling ordinary read tools", async () => {
+		vi.mocked(CodeIndexManagerRegistry.getOrCreate).mockReturnValue(
+			makeManager({ isFeatureEnabled: true, isFeatureConfigured: true, isInitialized: true }),
+		)
+		const result = await buildNativeToolsArrayWithRestrictions({
+			...makeOptions(),
+			disabledTools: [tools.codebase_search],
+		})
+
+		if (includeAllToolsWithRestrictions) {
+			expect(result.allowedFunctionNames).toBeDefined()
+			expect(result.allowedFunctionNames).not.toContain(tools.codebase_search)
+			expect(toolNames(result.tools)).toContain(tools.codebase_search)
+		} else {
+			expect(result.allowedFunctionNames).toBeUndefined()
+			expect(toolNames(result.tools)).not.toContain(tools.codebase_search)
 		}
-		await check("/tasks/ready", false, "no-read")
-		await check("/tasks/ready", false, "code", ["codebase_search"])
+		for (const tool of ordinaryReadTools) {
+			expect(includeAllToolsWithRestrictions ? result.allowedFunctionNames : toolNames(result.tools)).toContain(
+				tool,
+			)
+		}
 	})
 })
