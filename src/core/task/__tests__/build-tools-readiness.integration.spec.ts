@@ -43,6 +43,10 @@ describe.each([
 		}
 	}
 
+	function callable(result: Awaited<ReturnType<typeof buildNativeToolsArrayWithRestrictions>>) {
+		return includeAllToolsWithRestrictions ? result.allowedFunctionNames : toolNames(result.tools)
+	}
+
 	it("uses the task context and cwd without leaking readiness between workspaces", async () => {
 		const options = makeOptions()
 		const ready = makeManager({ isFeatureEnabled: true, isFeatureConfigured: true, isInitialized: true })
@@ -55,9 +59,7 @@ describe.each([
 
 		const first = await buildNativeToolsArrayWithRestrictions(options)
 		expect(CodeIndexManagerRegistry.getOrCreate).toHaveBeenLastCalledWith(options.provider.context, "/tasks/ready")
-		expect(includeAllToolsWithRestrictions ? first.allowedFunctionNames : toolNames(first.tools)).toContain(
-			tools.codebase_search,
-		)
+		expect(callable(first)).toContain(tools.codebase_search)
 
 		const other = await buildNativeToolsArrayWithRestrictions({ ...options, cwd: "/tasks/unready" })
 		expect(CodeIndexManagerRegistry.getOrCreate).toHaveBeenLastCalledWith(
@@ -73,12 +75,13 @@ describe.each([
 			expect(other.allowedFunctionNames).toBeUndefined()
 			expect(toolNames(other.tools)).not.toContain(tools.codebase_search)
 		}
+		for (const tool of ordinaryReadTools) {
+			expect(callable(other)).toContain(tool)
+		}
 
 		const restored = await buildNativeToolsArrayWithRestrictions(options)
 		expect(CodeIndexManagerRegistry.getOrCreate).toHaveBeenLastCalledWith(options.provider.context, "/tasks/ready")
-		expect(includeAllToolsWithRestrictions ? restored.allowedFunctionNames : toolNames(restored.tools)).toContain(
-			tools.codebase_search,
-		)
+		expect(callable(restored)).toContain(tools.codebase_search)
 		expect(CodeIndexManagerRegistry.getOrCreate).toHaveBeenCalledTimes(3)
 	})
 
@@ -95,9 +98,7 @@ describe.each([
 			expect(toolNames(result.tools)).not.toContain(tools.codebase_search)
 		}
 		for (const tool of ordinaryReadTools) {
-			expect(includeAllToolsWithRestrictions ? result.allowedFunctionNames : toolNames(result.tools)).toContain(
-				tool,
-			)
+			expect(callable(result)).toContain(tool)
 		}
 	})
 
@@ -109,9 +110,7 @@ describe.each([
 			vi.mocked(CodeIndexManagerRegistry.getOrCreate).mockReturnValue(makeManager(flags))
 
 			const initial = await buildNativeToolsArrayWithRestrictions(options)
-			expect(includeAllToolsWithRestrictions ? initial.allowedFunctionNames : toolNames(initial.tools)).toContain(
-				tools.codebase_search,
-			)
+			expect(callable(initial)).toContain(tools.codebase_search)
 
 			flags[flag] = false
 			const unavailable = await buildNativeToolsArrayWithRestrictions(options)
@@ -124,16 +123,12 @@ describe.each([
 				expect(toolNames(unavailable.tools)).not.toContain(tools.codebase_search)
 			}
 			for (const tool of ordinaryReadTools) {
-				expect(
-					includeAllToolsWithRestrictions ? unavailable.allowedFunctionNames : toolNames(unavailable.tools),
-				).toContain(tool)
+				expect(callable(unavailable)).toContain(tool)
 			}
 
 			flags[flag] = true
 			const recovered = await buildNativeToolsArrayWithRestrictions(options)
-			expect(
-				includeAllToolsWithRestrictions ? recovered.allowedFunctionNames : toolNames(recovered.tools),
-			).toContain(tools.codebase_search)
+			expect(callable(recovered)).toContain(tools.codebase_search)
 		},
 	)
 
@@ -153,11 +148,11 @@ describe.each([
 		} else {
 			expect(result.allowedFunctionNames).toBeUndefined()
 		}
-		const callable = includeAllToolsWithRestrictions ? result.allowedFunctionNames : toolNames(result.tools)
+		const callableSet = callable(result)
 		for (const tool of [tools.codebase_search, ...ordinaryReadTools]) {
-			expect(callable).not.toContain(tool)
+			expect(callableSet).not.toContain(tool)
 		}
-		expect(callable).toContain(tools.execute_command)
+		expect(callableSet).toContain(tools.execute_command)
 	})
 
 	it("honors disabledTools with a ready manager without disabling ordinary read tools", async () => {
@@ -178,9 +173,7 @@ describe.each([
 			expect(toolNames(result.tools)).not.toContain(tools.codebase_search)
 		}
 		for (const tool of ordinaryReadTools) {
-			expect(includeAllToolsWithRestrictions ? result.allowedFunctionNames : toolNames(result.tools)).toContain(
-				tool,
-			)
+			expect(callable(result)).toContain(tool)
 		}
 	})
 })
