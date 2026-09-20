@@ -54,8 +54,8 @@ describe("CodebaseSearchTool workspace-scope consumer", () => {
 		}
 	})
 
-	afterEach(() => {
-		registry.disposeAll()
+	afterEach(async () => {
+		await registry.disposeAll()
 		vi.restoreAllMocks()
 	})
 

@@ -125,9 +125,9 @@ describe("CodeIndexManager - handleSettingsChange regression", () => {
 	const testGlobalStoragePath = path.join(path.sep, "test", "global-storage")
 	const testLogPath = path.join(path.sep, "test", "log")
 
-	beforeEach(() => {
+	beforeEach(async () => {
 		// Clear all instances before each test
-		codeIndexWorkspaceScopeRegistry.disposeAll()
+		await codeIndexWorkspaceScopeRegistry.disposeAll()
 
 		const workspaceStateStore: Record<string, any> = {}
 		const globalStateStore: Record<string, any> = {}
@@ -164,8 +164,8 @@ describe("CodeIndexManager - handleSettingsChange regression", () => {
 		manager = codeIndexWorkspaceScopeRegistry.getScope(mockContext)!.codeIndexManager
 	})
 
-	afterEach(() => {
-		codeIndexWorkspaceScopeRegistry.disposeAll()
+	afterEach(async () => {
+		await codeIndexWorkspaceScopeRegistry.disposeAll()
 	})
 
 	describe("handleSettingsChange", () => {
@@ -734,7 +734,7 @@ describe("CodeIndexManager - handleSettingsChange regression", () => {
 		})
 
 		it("should store enablement per folder URI, not per window", async () => {
-			codeIndexWorkspaceScopeRegistry.disposeAll()
+			await codeIndexWorkspaceScopeRegistry.disposeAll()
 
 			const vscode = await import("vscode")
 
@@ -785,7 +785,7 @@ describe("CodeIndexManager - handleSettingsChange regression", () => {
 			expect(managerA.isWorkspaceEnabled).toBe(false)
 			expect(managerB.isWorkspaceEnabled).toBe(true)
 
-			codeIndexWorkspaceScopeRegistry.disposeAll()
+			await codeIndexWorkspaceScopeRegistry.disposeAll()
 		})
 	})
 

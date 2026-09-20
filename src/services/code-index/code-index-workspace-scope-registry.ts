@@ -7,7 +7,7 @@ export class CodeIndexWorkspaceScopeRegistry {
 	public static readonly instance = new CodeIndexWorkspaceScopeRegistry()
 
 	private readonly scopes = new Map<string, CodeIndexWorkspaceScope>()
-	private disposing = false
+	private disposal?: Promise<void>
 
 	private constructor() {}
 
@@ -15,7 +15,7 @@ export class CodeIndexWorkspaceScopeRegistry {
 		context: vscode.ExtensionContext,
 		workspace?: string | vscode.Uri | vscode.WorkspaceFolder,
 	): CodeIndexWorkspaceScope | undefined {
-		if (this.disposing) {
+		if (this.disposal) {
 			return undefined
 		}
 		const folder = this.resolveWorkspaceFolder(typeof workspace === "string" ? workspace : undefined)
@@ -47,28 +47,32 @@ export class CodeIndexWorkspaceScopeRegistry {
 		return Array.from(this.scopes.values())
 	}
 
-	public disposeAll(): void {
-		if (this.disposing) {
-			return
+	public disposeAll(): Promise<void> {
+		if (this.disposal) {
+			return this.disposal
 		}
-		this.disposing = true
+
 		const scopes = this.getAllScopes()
 		this.scopes.clear()
-		const errors: unknown[] = []
-		try {
+		const disposal = (async () => {
+			const errors: unknown[] = []
 			for (const scope of scopes) {
 				try {
-					scope.dispose()
+					await scope.dispose()
 				} catch (error) {
 					errors.push(error)
 				}
 			}
-		} finally {
-			this.disposing = false
-		}
-		if (errors.length > 0) {
-			throw new AggregateError(errors, "Failed to dispose code index workspace scopes")
-		}
+			if (errors.length > 0) {
+				throw new AggregateError(errors, "Failed to dispose code index workspace scopes")
+			}
+		})().finally(() => {
+			if (this.disposal === disposal) {
+				this.disposal = undefined
+			}
+		})
+		this.disposal = disposal
+		return disposal
 	}
 
 	private resolveWorkspaceFolder(workspacePath?: string): vscode.WorkspaceFolder | undefined {

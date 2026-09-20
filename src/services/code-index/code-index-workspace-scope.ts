@@ -11,12 +11,16 @@ import { CodeIndexManager } from "./manager"
 export class CodeIndexWorkspaceScope implements vscode.Disposable {
 	public readonly codeIndexManager: CodeIndexManager
 	private initialization?: Promise<{ requiresRestart: boolean }>
+	private disposal?: Promise<void>
 
 	public constructor(workspacePath: string, folderUri: vscode.Uri, context: vscode.ExtensionContext) {
 		this.codeIndexManager = new CodeIndexManager(workspacePath, folderUri, context)
 	}
 
 	public initialize(contextProxy: ContextProxy): Promise<{ requiresRestart: boolean }> {
+		if (this.disposal) {
+			return Promise.reject(new Error("Cannot initialize a disposed code index workspace scope"))
+		}
 		if (this.initialization) {
 			return this.initialization
 		}
@@ -30,7 +34,20 @@ export class CodeIndexWorkspaceScope implements vscode.Disposable {
 		return initialization
 	}
 
-	public dispose(): void {
-		this.codeIndexManager.dispose()
+	public dispose(): Promise<void> {
+		if (this.disposal) {
+			return this.disposal
+		}
+
+		const initialization = this.initialization
+		this.disposal = (async () => {
+			try {
+				await initialization
+			} catch {
+				// Initialization failures do not release ownership; the manager still needs disposal.
+			}
+			this.codeIndexManager.dispose()
+		})()
+		return this.disposal
 	}
 }

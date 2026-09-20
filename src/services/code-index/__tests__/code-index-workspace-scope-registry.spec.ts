@@ -11,7 +11,7 @@ vi.mock("vscode", () => ({
 
 vi.mock("../manager", () => ({
 	CodeIndexManager: vi.fn().mockImplementation(function () {
-		return { dispose: vi.fn() }
+		return { initialize: vi.fn().mockResolvedValue({ requiresRestart: false }), dispose: vi.fn() }
 	}),
 }))
 
@@ -31,8 +31,8 @@ describe("CodeIndexWorkspaceScopeRegistry", () => {
 		vi.mocked(vscode.Uri.file).mockImplementation((value) => makeUri(value))
 	})
 
-	afterEach(() => {
-		codeIndexWorkspaceScopeRegistry.disposeAll()
+	afterEach(async () => {
+		await codeIndexWorkspaceScopeRegistry.disposeAll()
 		vi.restoreAllMocks()
 	})
 
@@ -123,18 +123,39 @@ describe("CodeIndexWorkspaceScopeRegistry", () => {
 		expect(codeIndexWorkspaceScopeRegistry.getAllScopes()).toEqual([scope])
 	})
 
-	it("disposes every scope, supports repeated cleanup and recreates scopes", () => {
+	it("disposes every scope, supports repeated cleanup and recreates scopes", async () => {
 		const a = codeIndexWorkspaceScopeRegistry.getScope(context, "/first")!
 		const b = codeIndexWorkspaceScopeRegistry.getScope(context, "/second")!
-		codeIndexWorkspaceScopeRegistry.disposeAll()
-		codeIndexWorkspaceScopeRegistry.disposeAll()
+		await codeIndexWorkspaceScopeRegistry.disposeAll()
+		await codeIndexWorkspaceScopeRegistry.disposeAll()
 		expect(a.codeIndexManager.dispose).toHaveBeenCalledTimes(1)
 		expect(b.codeIndexManager.dispose).toHaveBeenCalledTimes(1)
 		expect(codeIndexWorkspaceScopeRegistry.getAllScopes()).toEqual([])
 		expect(codeIndexWorkspaceScopeRegistry.getScope(context, "/first")).not.toBe(a)
 	})
 
-	it("attempts every scope and preserves all thrown values in an aggregate", () => {
+	it("waits for lazy scope initialization before disposing its manager", async () => {
+		const scope = codeIndexWorkspaceScopeRegistry.getScope(context, "/lazy")!
+		let resolveInitialization: ((result: { requiresRestart: boolean }) => void) | undefined
+		vi.mocked(scope.codeIndexManager.initialize).mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					resolveInitialization = resolve
+				}),
+		)
+		void scope.initialize({} as never)
+
+		const firstDisposal = codeIndexWorkspaceScopeRegistry.disposeAll()
+		const concurrentDisposal = codeIndexWorkspaceScopeRegistry.disposeAll()
+		expect(concurrentDisposal).toBe(firstDisposal)
+		expect(scope.codeIndexManager.dispose).not.toHaveBeenCalled()
+
+		resolveInitialization?.({ requiresRestart: false })
+		await firstDisposal
+		expect(scope.codeIndexManager.dispose).toHaveBeenCalledExactlyOnceWith()
+	})
+
+	it("attempts every scope and preserves all thrown values in an aggregate", async () => {
 		const a = codeIndexWorkspaceScopeRegistry.getScope(context, "/first")!
 		const b = codeIndexWorkspaceScopeRegistry.getScope(context, "/second")!
 		const c = codeIndexWorkspaceScopeRegistry.getScope(context, "/third")!
@@ -148,7 +169,7 @@ describe("CodeIndexWorkspaceScopeRegistry", () => {
 
 		let caught: unknown
 		try {
-			codeIndexWorkspaceScopeRegistry.disposeAll()
+			await codeIndexWorkspaceScopeRegistry.disposeAll()
 		} catch (error) {
 			caught = error
 		}
@@ -159,14 +180,14 @@ describe("CodeIndexWorkspaceScopeRegistry", () => {
 			expect(scope.codeIndexManager.dispose).toHaveBeenCalledExactlyOnceWith()
 		}
 		expect(codeIndexWorkspaceScopeRegistry.getAllScopes()).toEqual([])
-		codeIndexWorkspaceScopeRegistry.disposeAll()
+		await codeIndexWorkspaceScopeRegistry.disposeAll()
 		expect(a.codeIndexManager.dispose).toHaveBeenCalledTimes(1)
 		const replacement = codeIndexWorkspaceScopeRegistry.getScope(context, "/first")
 		expect(replacement).not.toBe(a)
 		expect(codeIndexWorkspaceScopeRegistry.getAllScopes()).toEqual([replacement])
 	})
 
-	it.each([false, true])("blocks reentrant lookup and cleanup, then resets (failure=%s)", (fails) => {
+	it.each([false, true])("blocks reentrant lookup and cleanup, then resets (failure=%s)", async (fails) => {
 		const a = codeIndexWorkspaceScopeRegistry.getScope(context, "/first")!
 		const b = codeIndexWorkspaceScopeRegistry.getScope(context, "/second")!
 		vi.mocked(a.codeIndexManager.dispose).mockImplementationOnce(() => {
@@ -174,15 +195,15 @@ describe("CodeIndexWorkspaceScopeRegistry", () => {
 			expect(codeIndexWorkspaceScopeRegistry.getScope(context)).toBeUndefined()
 			expect(codeIndexWorkspaceScopeRegistry.getScope(context, "/first")).toBeUndefined()
 			expect(codeIndexWorkspaceScopeRegistry.getScope(context, "/new")).toBeUndefined()
-			codeIndexWorkspaceScopeRegistry.disposeAll()
+			void codeIndexWorkspaceScopeRegistry.disposeAll()
 			expect(b.codeIndexManager.dispose).not.toHaveBeenCalled()
 			if (fails) throw new Error("cleanup failed")
 		})
 
 		if (fails) {
-			expect(() => codeIndexWorkspaceScopeRegistry.disposeAll()).toThrow(AggregateError)
+			await expect(codeIndexWorkspaceScopeRegistry.disposeAll()).rejects.toBeInstanceOf(AggregateError)
 		} else {
-			codeIndexWorkspaceScopeRegistry.disposeAll()
+			await codeIndexWorkspaceScopeRegistry.disposeAll()
 		}
 		expect(a.codeIndexManager.dispose).toHaveBeenCalledTimes(1)
 		expect(b.codeIndexManager.dispose).toHaveBeenCalledTimes(1)
@@ -191,7 +212,7 @@ describe("CodeIndexWorkspaceScopeRegistry", () => {
 		expect(codeIndexWorkspaceScopeRegistry.getScope(context, "/first")).not.toBe(a)
 	})
 
-	it("cleans up its own snapshot even when a caller mutates a previously returned list", () => {
+	it("cleans up its own snapshot even when a caller mutates a previously returned list", async () => {
 		const a = codeIndexWorkspaceScopeRegistry.getScope(context, "/first")!
 		const b = codeIndexWorkspaceScopeRegistry.getScope(context, "/second")!
 		const snapshot = codeIndexWorkspaceScopeRegistry.getAllScopes()
@@ -199,7 +220,7 @@ describe("CodeIndexWorkspaceScopeRegistry", () => {
 			snapshot.splice(0, snapshot.length)
 		})
 
-		codeIndexWorkspaceScopeRegistry.disposeAll()
+		await codeIndexWorkspaceScopeRegistry.disposeAll()
 		expect(b.codeIndexManager.dispose).toHaveBeenCalledExactlyOnceWith()
 		expect(snapshot).toEqual([])
 	})

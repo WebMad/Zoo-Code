@@ -119,6 +119,18 @@ describe.each([
 		}
 	})
 
+	it("isolates initialization failure while retaining ordinary read tools", async () => {
+		const scope = makeScope(makeManager({ isFeatureEnabled: true, isFeatureConfigured: true, isInitialized: true }))
+		vi.mocked(scope.initialize).mockRejectedValueOnce(new Error("initialization failed"))
+		vi.mocked(codeIndexWorkspaceScopeRegistry.getScope).mockReturnValue(scope)
+
+		const result = await buildNativeToolsArrayWithRestrictions(makeOptions())
+		expect(callable(result)).not.toContain(tools.codebase_search)
+		for (const tool of ordinaryReadTools) {
+			expect(callable(result)).toContain(tool)
+		}
+	})
+
 	it.each(["isFeatureEnabled", "isFeatureConfigured", "isInitialized"] as const)(
 		"rereads %s on subsequent builds with the same manager",
 		async (flag) => {

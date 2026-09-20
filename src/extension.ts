@@ -201,7 +201,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		dispose: async () => {
 			await Promise.all(codeIndexInitializations)
 			try {
-				codeIndexWorkspaceScopeRegistry.disposeAll()
+				await codeIndexWorkspaceScopeRegistry.disposeAll()
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error)
 				outputChannel.appendLine(`[CodeIndexManager] Error during workspace scope cleanup: ${message}`)
@@ -421,5 +421,5 @@ export async function deactivate() {
 
 	Terminal.setTerminalProfile(undefined)
 	TerminalRegistry.cleanup()
-	codeIndexWorkspaceScopeRegistry.disposeAll()
+	await codeIndexWorkspaceScopeRegistry.disposeAll()
 }

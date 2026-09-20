@@ -22,7 +22,7 @@ describe("CodeIndexWorkspaceScope", () => {
 		await expect(scope.initialize(contextProxy)).resolves.toEqual({ requiresRestart: false })
 		expect(scope.codeIndexManager.initialize).toHaveBeenCalledExactlyOnceWith(contextProxy)
 
-		scope.dispose()
+		await scope.dispose()
 		expect(scope.codeIndexManager.dispose).toHaveBeenCalledExactlyOnceWith()
 	})
 
@@ -65,11 +65,33 @@ describe("CodeIndexWorkspaceScope", () => {
 
 		await expect(scope.initialize({} as ContextProxy)).rejects.toBe(error)
 		expect(scope.codeIndexManager.dispose).not.toHaveBeenCalled()
-		scope.dispose()
+		await scope.dispose()
 		expect(scope.codeIndexManager.dispose).toHaveBeenCalledExactlyOnceWith()
 	})
 
-	it("propagates disposal errors to its owner", () => {
+	it("waits for initialization, blocks new initialization, and disposes exactly once", async () => {
+		const scope = new CodeIndexWorkspaceScope("/workspace", makeUri("/workspace"), makeExtensionContext())
+		const contextProxy = {} as ContextProxy
+		let resolveInitialization: ((result: { requiresRestart: boolean }) => void) | undefined
+		vi.mocked(scope.codeIndexManager.initialize).mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					resolveInitialization = resolve
+				}),
+		)
+
+		void scope.initialize(contextProxy)
+		const disposal = scope.dispose()
+		expect(scope.codeIndexManager.dispose).not.toHaveBeenCalled()
+		await expect(scope.initialize(contextProxy)).rejects.toThrow("Cannot initialize a disposed")
+
+		resolveInitialization?.({ requiresRestart: false })
+		await expect(disposal).resolves.toBeUndefined()
+		await expect(scope.dispose()).resolves.toBeUndefined()
+		expect(scope.codeIndexManager.dispose).toHaveBeenCalledTimes(1)
+	})
+
+	it("propagates disposal errors to its owner", async () => {
 		const uri = makeUri("/workspace")
 		const scope = new CodeIndexWorkspaceScope(uri.fsPath, uri, makeExtensionContext())
 		const error = new Error("disposal failed")
@@ -77,7 +99,7 @@ describe("CodeIndexWorkspaceScope", () => {
 			throw error
 		})
 
-		expect(() => scope.dispose()).toThrow(error)
+		await expect(scope.dispose()).rejects.toBe(error)
 		expect(scope.codeIndexManager.dispose).toHaveBeenCalledExactlyOnceWith()
 	})
 })
