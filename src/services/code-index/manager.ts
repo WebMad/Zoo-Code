@@ -120,9 +120,6 @@ export class CodeIndexManager {
 	 * @returns Object indicating if a restart is needed
 	 */
 	public initialize(contextProxy: ContextProxy): Promise<{ requiresRestart: boolean }> {
-		if (this.disposed) {
-			return Promise.reject(new Error("Cannot initialize a disposed CodeIndexManager"))
-		}
 		if (this.initialization) {
 			return this.initialization
 		}
@@ -143,7 +140,6 @@ export class CodeIndexManager {
 		}
 		// Load configuration once to get current state and restart requirements
 		const { requiresRestart } = await this._configManager.loadConfiguration()
-		this.assertNotDisposed()
 
 		// 2. Check if feature is enabled
 		if (!this.isFeatureEnabled) {

@@ -197,11 +197,10 @@ describe("CodeIndexManager consumer-owned lifecycle", () => {
 		expect(mocks.startIndexing).toHaveBeenCalledOnce()
 	})
 
-	it("makes disposal idempotent and rejects later initialization", async () => {
+	it("makes disposal idempotent", async () => {
 		await manager.initialize(contextProxy)
 		manager.dispose()
 		manager.dispose()
-		await expect(manager.initialize(contextProxy)).rejects.toThrow("disposed CodeIndexManager")
 		expect(mocks.stopIndexing).toHaveBeenCalledOnce()
 		expect(mocks.disposeProvider).toHaveBeenCalledOnce()
 		expect(mocks.disposeState).toHaveBeenCalledOnce()
