@@ -29,6 +29,8 @@ export class CodeIndexManager {
 
 	// Flag to prevent race conditions during error recovery
 	private _isRecoveringFromError = false
+	private initialization?: Promise<{ requiresRestart: boolean }>
+	private disposed = false
 
 	private readonly workspacePath: string
 	private readonly _folderUri: vscode.Uri
@@ -117,13 +119,31 @@ export class CodeIndexManager {
 	 * Must be called before using any other methods.
 	 * @returns Object indicating if a restart is needed
 	 */
-	public async initialize(contextProxy: ContextProxy): Promise<{ requiresRestart: boolean }> {
+	public initialize(contextProxy: ContextProxy): Promise<{ requiresRestart: boolean }> {
+		if (this.disposed) {
+			return Promise.reject(new Error("Cannot initialize a disposed CodeIndexManager"))
+		}
+		if (this.initialization) {
+			return this.initialization
+		}
+
+		const initialization = this.initializeServices(contextProxy).finally(() => {
+			if (this.initialization === initialization) {
+				this.initialization = undefined
+			}
+		})
+		this.initialization = initialization
+		return initialization
+	}
+
+	private async initializeServices(contextProxy: ContextProxy): Promise<{ requiresRestart: boolean }> {
 		// 1. ConfigManager Initialization and Configuration Loading
 		if (!this._configManager) {
 			this._configManager = new CodeIndexConfigManager(contextProxy)
 		}
 		// Load configuration once to get current state and restart requirements
 		const { requiresRestart } = await this._configManager.loadConfiguration()
+		this.assertNotDisposed()
 
 		// 2. Check if feature is enabled
 		if (!this.isFeatureEnabled) {
@@ -153,6 +173,7 @@ export class CodeIndexManager {
 		if (!this._cacheManager) {
 			this._cacheManager = new CacheManager(this.context, this.workspacePath)
 			await this._cacheManager.initialize()
+			this.assertNotDisposed()
 		}
 
 		// 6. Determine if Core Services Need Recreation
@@ -160,6 +181,7 @@ export class CodeIndexManager {
 
 		if (needsServiceRecreation) {
 			await this._recreateServices()
+			this.assertNotDisposed()
 		}
 
 		// 7. Handle Indexing Start/Restart
@@ -180,6 +202,12 @@ export class CodeIndexManager {
 		}
 
 		return { requiresRestart }
+	}
+
+	private assertNotDisposed(): void {
+		if (this.disposed) {
+			throw new Error("CodeIndexManager was disposed during initialization")
+		}
 	}
 
 	private startIndexingInBackground(): void {
@@ -290,6 +318,10 @@ export class CodeIndexManager {
 	 * Cleans up the manager instance.
 	 */
 	public dispose(): void {
+		if (this.disposed) {
+			return
+		}
+		this.disposed = true
 		this.stopIndexing()
 		if (this._sembleProvider) {
 			this._sembleProvider.dispose()
