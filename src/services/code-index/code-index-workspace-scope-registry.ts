@@ -11,25 +11,35 @@ export class CodeIndexWorkspaceScopeRegistry {
 
 	private constructor() {}
 
-	public getScope(context: vscode.ExtensionContext, workspacePath?: string): CodeIndexWorkspaceScope | undefined {
+	public getScope(
+		context: vscode.ExtensionContext,
+		workspace?: string | vscode.Uri | vscode.WorkspaceFolder,
+	): CodeIndexWorkspaceScope | undefined {
 		if (this.disposing) {
 			return undefined
 		}
-		const folder = this.resolveWorkspaceFolder(workspacePath)
-		const resolvedPath = workspacePath || folder?.uri.fsPath
-		if (!resolvedPath) {
+		const folder = this.resolveWorkspaceFolder(typeof workspace === "string" ? workspace : undefined)
+		const folderUri =
+			typeof workspace === "string"
+				? (folder?.uri ?? vscode.Uri.file(workspace))
+				: workspace === undefined
+					? folder?.uri
+					: "uri" in workspace
+						? workspace.uri
+						: workspace
+		const resolvedPath = typeof workspace === "string" ? workspace : folderUri?.fsPath
+		if (!resolvedPath || !folderUri) {
 			return undefined
 		}
 
-		const existing = this.scopes.get(resolvedPath)
+		const scopeKey = folderUri.toString(true)
+		const existing = this.scopes.get(scopeKey)
 		if (existing) {
 			return existing
 		}
 
-		// Preserve real workspace URIs, including remote schemes and authorities.
-		const folderUri = folder?.uri ?? vscode.Uri.file(resolvedPath)
 		const scope = new CodeIndexWorkspaceScope(resolvedPath, folderUri, context)
-		this.scopes.set(resolvedPath, scope)
+		this.scopes.set(scopeKey, scope)
 		return scope
 	}
 

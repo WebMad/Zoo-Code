@@ -82,6 +82,22 @@ describe("CodeIndexWorkspaceScopeRegistry", () => {
 		expect(vscode.Uri.file).not.toHaveBeenCalled()
 	})
 
+	it("keeps equal fs paths from different remote authorities isolated", () => {
+		const firstRemote = makeUri("/workspace", { scheme: "vscode-remote", authority: "ssh-remote+first" })
+		const secondRemote = makeUri("/workspace", { scheme: "vscode-remote", authority: "ssh-remote+second" })
+		vi.mocked(firstRemote.toString).mockReturnValue("vscode-remote://ssh-remote+first/workspace")
+		vi.mocked(secondRemote.toString).mockReturnValue("vscode-remote://ssh-remote+second/workspace")
+
+		const firstScope = codeIndexWorkspaceScopeRegistry.getScope(context, firstRemote)
+		const secondScope = codeIndexWorkspaceScopeRegistry.getScope(context, secondRemote)
+
+		expect(firstRemote.toString).toHaveBeenCalledWith(true)
+		expect(secondRemote.toString).toHaveBeenCalledWith(true)
+		expect(secondScope).not.toBe(firstScope)
+		expect(CodeIndexManager).toHaveBeenNthCalledWith(1, "/workspace", firstRemote, context)
+		expect(CodeIndexManager).toHaveBeenNthCalledWith(2, "/workspace", secondRemote, context)
+	})
+
 	it("constructs a file URI for an explicit path without open workspaces", () => {
 		Object.defineProperty(vscode.workspace, "workspaceFolders", { configurable: true, value: undefined })
 		const uri = makeUri("/outside folder/#name")

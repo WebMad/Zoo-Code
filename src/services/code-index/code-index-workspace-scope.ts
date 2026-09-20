@@ -10,13 +10,24 @@ import { CodeIndexManager } from "./manager"
  */
 export class CodeIndexWorkspaceScope implements vscode.Disposable {
 	public readonly codeIndexManager: CodeIndexManager
+	private initialization?: Promise<{ requiresRestart: boolean }>
 
 	public constructor(workspacePath: string, folderUri: vscode.Uri, context: vscode.ExtensionContext) {
 		this.codeIndexManager = new CodeIndexManager(workspacePath, folderUri, context)
 	}
 
 	public initialize(contextProxy: ContextProxy): Promise<{ requiresRestart: boolean }> {
-		return this.codeIndexManager.initialize(contextProxy)
+		if (this.initialization) {
+			return this.initialization
+		}
+
+		const initialization = this.codeIndexManager.initialize(contextProxy).finally(() => {
+			if (this.initialization === initialization) {
+				this.initialization = undefined
+			}
+		})
+		this.initialization = initialization
+		return initialization
 	}
 
 	public dispose(): void {

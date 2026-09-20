@@ -35,6 +35,28 @@ describe("CodeIndexWorkspaceScope", () => {
 		await expect(scope.initialize({} as ContextProxy)).resolves.toBe(result)
 	})
 
+	it("shares concurrent initialization and permits a later reload", async () => {
+		const scope = new CodeIndexWorkspaceScope("/workspace", makeUri("/workspace"), makeExtensionContext())
+		const contextProxy = {} as ContextProxy
+		let resolveInitialization: ((result: { requiresRestart: boolean }) => void) | undefined
+		vi.mocked(scope.codeIndexManager.initialize).mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					resolveInitialization = resolve
+				}),
+		)
+
+		const first = scope.initialize(contextProxy)
+		const concurrent = scope.initialize(contextProxy)
+		expect(concurrent).toBe(first)
+		expect(scope.codeIndexManager.initialize).toHaveBeenCalledTimes(1)
+
+		resolveInitialization?.({ requiresRestart: false })
+		await first
+		await scope.initialize(contextProxy)
+		expect(scope.codeIndexManager.initialize).toHaveBeenCalledTimes(2)
+	})
+
 	it("propagates initialization rejection without taking over consumer cleanup", async () => {
 		const uri = makeUri("/workspace")
 		const scope = new CodeIndexWorkspaceScope(uri.fsPath, uri, makeExtensionContext())

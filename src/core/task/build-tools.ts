@@ -102,6 +102,7 @@ export async function buildNativeToolsArrayWithRestrictions(options: BuildToolsO
 	const { codeIndexWorkspaceScopeRegistry } =
 		await import("../../services/code-index/code-index-workspace-scope-registry")
 	const codeIndexWorkspaceScope = codeIndexWorkspaceScopeRegistry.getScope(provider.context, cwd)
+	await codeIndexWorkspaceScope?.initialize(provider.contextProxy)
 
 	// Build settings object for tool filtering.
 	const filterSettings = {

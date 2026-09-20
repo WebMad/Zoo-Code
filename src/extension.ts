@@ -200,14 +200,19 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push({
 		dispose: async () => {
 			await Promise.all(codeIndexInitializations)
-			codeIndexWorkspaceScopeRegistry.disposeAll()
+			try {
+				codeIndexWorkspaceScopeRegistry.disposeAll()
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error)
+				outputChannel.appendLine(`[CodeIndexManager] Error during workspace scope cleanup: ${message}`)
+			}
 		},
 	})
 
 	// Initialize code index scopes for all workspace folders.
 	if (vscode.workspace.workspaceFolders) {
 		for (const folder of vscode.workspace.workspaceFolders) {
-			const scope = codeIndexWorkspaceScopeRegistry.getScope(context, folder.uri.fsPath)
+			const scope = codeIndexWorkspaceScopeRegistry.getScope(context, folder)
 
 			if (scope) {
 				// Initialize in background; do not block extension activation

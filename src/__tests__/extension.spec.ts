@@ -430,19 +430,20 @@ describe("extension.ts", () => {
 
 		test("skips an unavailable scope without skipping later workspace initialization", async () => {
 			const vscode = await import("vscode")
-			vi.mocked(vscode.workspace).workspaceFolders = ["/unavailable", "/healthy"].map((name, index) => ({
+			const folders = ["/unavailable", "/healthy"].map((name, index) => ({
 				name,
 				index,
 				uri: makeUri(name),
 			}))
+			vi.mocked(vscode.workspace).workspaceFolders = folders
 			const { codeIndexWorkspaceScopeRegistry: registry } =
 				await import("../services/code-index/code-index-workspace-scope-registry")
 			const getScope = vi.spyOn(registry, "getScope").mockReturnValueOnce(undefined)
 			try {
 				const { activate } = await import("../extension")
 				await expect(activate(mockContext)).resolves.toBeDefined()
-				expect(getScope).toHaveBeenCalledWith(mockContext, "/unavailable")
-				expect(getScope).toHaveBeenCalledWith(mockContext, "/healthy")
+				expect(getScope).toHaveBeenCalledWith(mockContext, folders[0])
+				expect(getScope).toHaveBeenCalledWith(mockContext, folders[1])
 				const scopes = registry.getAllScopes()
 				expect(scopes).toHaveLength(1)
 				expect(scopes[0].codeIndexManager.initialize).toHaveBeenCalledTimes(1)
