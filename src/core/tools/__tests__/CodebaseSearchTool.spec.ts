@@ -214,6 +214,7 @@ describe("CodebaseSearchTool", () => {
 				return []
 			})
 			await tool.execute({ query, path }, task, callbacks)
+			expect(CodeIndexManagerRegistry.getOrCreate).toHaveBeenCalledExactlyOnceWith(context, "/task")
 			expect(manager.searchIndex).toHaveBeenCalledExactlyOnceWith(query, path)
 			expect(callbacks.pushToolResult).toHaveBeenCalledExactlyOnceWith(
 				`No relevant code snippets found for the query: "${query}"`,
@@ -253,6 +254,8 @@ describe("CodebaseSearchTool", () => {
 			.mockReturnValueOnce("src/result.ts")
 			.mockReturnValueOnce("lib/other.ts")
 		await tool.execute({ query }, task, callbacks)
+		expect(CodeIndexManagerRegistry.getOrCreate).toHaveBeenCalledExactlyOnceWith(context, "/task")
+		expect(manager.searchIndex).toHaveBeenCalledExactlyOnceWith(query, undefined)
 		expect(vscode.workspace.asRelativePath).toHaveBeenCalledTimes(2)
 		expect(vscode.workspace.asRelativePath).toHaveBeenNthCalledWith(1, "/task/src/result.ts", false)
 		expect(vscode.workspace.asRelativePath).toHaveBeenNthCalledWith(2, "/task/lib/other.ts", false)
