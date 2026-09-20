@@ -30,7 +30,6 @@ export class CodeIndexManager {
 	// Flag to prevent race conditions during error recovery
 	private _isRecoveringFromError = false
 	private initialization?: Promise<{ requiresRestart: boolean }>
-	private disposed = false
 
 	private readonly workspacePath: string
 	private readonly _folderUri: vscode.Uri
@@ -306,10 +305,6 @@ export class CodeIndexManager {
 	 * Cleans up the manager instance.
 	 */
 	public dispose(): void {
-		if (this.disposed) {
-			return
-		}
-		this.disposed = true
 		this.stopIndexing()
 		if (this._sembleProvider) {
 			this._sembleProvider.dispose()
