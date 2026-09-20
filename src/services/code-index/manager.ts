@@ -169,7 +169,6 @@ export class CodeIndexManager {
 		if (!this._cacheManager) {
 			this._cacheManager = new CacheManager(this.context, this.workspacePath)
 			await this._cacheManager.initialize()
-			this.assertNotDisposed()
 		}
 
 		// 6. Determine if Core Services Need Recreation
@@ -177,7 +176,6 @@ export class CodeIndexManager {
 
 		if (needsServiceRecreation) {
 			await this._recreateServices()
-			this.assertNotDisposed()
 		}
 
 		// 7. Handle Indexing Start/Restart
@@ -198,12 +196,6 @@ export class CodeIndexManager {
 		}
 
 		return { requiresRestart }
-	}
-
-	private assertNotDisposed(): void {
-		if (this.disposed) {
-			throw new Error("CodeIndexManager was disposed during initialization")
-		}
 	}
 
 	private startIndexingInBackground(): void {

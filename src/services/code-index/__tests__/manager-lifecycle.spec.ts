@@ -133,7 +133,7 @@ describe("CodeIndexManager consumer-owned lifecycle", () => {
 	)
 
 	it.each(["configuration", "cache"] as const)(
-		"does not start resources after disposal during %s initialization",
+		"documents resources starting after disposal during %s initialization",
 		async (stage) => {
 			const entered = deferred<void>()
 			const release = deferred<void>()
@@ -153,14 +153,14 @@ describe("CodeIndexManager consumer-owned lifecycle", () => {
 			await entered.promise
 			manager.dispose()
 			release.resolve()
-			await expect(initialization).rejects.toThrow("disposed during initialization")
+			await initialization
 			expect(mocks.disposeState).toHaveBeenCalledOnce()
-			expect(mocks.startIndexing).not.toHaveBeenCalled()
+			expect(mocks.startIndexing).toHaveBeenCalledOnce()
 			expect(mocks.disposeProvider).not.toHaveBeenCalled()
 		},
 	)
 
-	it("rejects initialization after disposal clears a pending provider", async () => {
+	it("documents initialization reporting success after disposal clears a pending provider", async () => {
 		const entered = deferred<void>()
 		const release = deferred<void>()
 		mocks.initializeProvider.mockImplementationOnce(() => {
@@ -171,7 +171,7 @@ describe("CodeIndexManager consumer-owned lifecycle", () => {
 		await entered.promise
 		manager.dispose()
 		release.resolve()
-		await expect(initialization).rejects.toThrow("disposed during initialization")
+		await expect(initialization).resolves.toEqual({ requiresRestart: false })
 		expect(manager.isInitialized).toBe(false)
 		expect(mocks.disposeProvider).toHaveBeenCalledOnce()
 		expect(mocks.disposeState).toHaveBeenCalledOnce()
