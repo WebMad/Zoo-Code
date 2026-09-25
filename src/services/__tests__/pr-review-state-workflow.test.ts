@@ -443,7 +443,6 @@ function latestGateStatus(result: Awaited<ReturnType<typeof runWorkflow>>) {
 
 describe("PR review-state workflow", () => {
 	it("uses supported CodeRabbit access and review controls", () => {
-		// External contributors can interact with chat; review overrides remain restricted below.
 		expect(codeRabbitConfig.chat.allow_non_org_members).toBe(true)
 		expect(codeRabbitConfig.reviews.pre_merge_checks.override_requested_reviewers_only).toBe(true)
 		expect(codeRabbitConfig.reviews.auto_review.auto_pause_after_reviewed_commits).toBe(0)
