@@ -66,7 +66,7 @@ export class CodebaseSearchTool extends BaseTool<"codebase_search"> {
 			// Settings defaults are not evidence that a fresh manager is explicitly disabled.
 			// Initialization belongs to the manager's owner, not the search tool.
 			if (!manager.isConfigurationLoaded) {
-				throw new Error("Code Indexing is not initialized for this workspace.")
+				throw new Error("Code Indexing configuration has not been loaded for this workspace.")
 			}
 
 			if (!manager.isFeatureEnabled) {

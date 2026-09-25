@@ -188,6 +188,25 @@ describe("CodebaseSearchTool", () => {
 		expect(task.say).not.toHaveBeenCalled()
 	})
 
+	it("reports configuration that has never loaded before checking settings or services", async () => {
+		Object.defineProperties(manager, {
+			isConfigurationLoaded: { value: false },
+			isFeatureEnabled: { value: false },
+			isFeatureConfigured: { value: false },
+			isInitialized: { value: false },
+		})
+
+		await tool.execute({ query }, task, callbacks)
+
+		expect(callbacks.handleError).toHaveBeenCalledExactlyOnceWith(
+			toolNamesSchema.enum.codebase_search,
+			new Error("Code Indexing configuration has not been loaded for this workspace."),
+		)
+		expect(manager.initialize).not.toHaveBeenCalled()
+		expect(manager.searchIndex).not.toHaveBeenCalled()
+		expect(callbacks.pushToolResult).not.toHaveBeenCalled()
+	})
+
 	it.each([true, false])("reports disabled indexing without searching (initialized: %s)", async (initialized) => {
 		Object.defineProperty(manager, "isInitialized", { value: initialized })
 		Object.defineProperty(manager, "isFeatureEnabled", { value: false })

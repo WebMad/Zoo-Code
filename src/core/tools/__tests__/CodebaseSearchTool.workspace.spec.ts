@@ -204,7 +204,7 @@ describe("CodebaseSearchTool workspace selection", () => {
 		expect(getWorkspacePath).not.toHaveBeenCalled()
 		expect(callbacks.handleError).toHaveBeenCalledExactlyOnceWith(
 			toolNamesSchema.enum.codebase_search,
-			new Error("Code Indexing is not initialized for this workspace."),
+			new Error("Code Indexing configuration has not been loaded for this workspace."),
 		)
 		expect(callbacks.pushToolResult).not.toHaveBeenCalled()
 		expect(task.say).not.toHaveBeenCalled()
