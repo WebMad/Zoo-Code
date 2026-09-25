@@ -196,7 +196,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		}),
 	)
 
-	const codeIndexScope = new CodeIndexScope(context)
+	const codeIndexScope = CodeIndexScope.getOrCreate(context)
 	context.subscriptions.push(codeIndexScope)
 	try {
 		codeIndexScope.init()

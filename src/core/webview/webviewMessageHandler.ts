@@ -61,8 +61,8 @@ import { changeLanguage, t } from "../../i18n"
 import { Package } from "../../shared/package"
 import { type RouterName, toRouterName } from "../../shared/api"
 import { MessageEnhancer } from "./messageEnhancer"
+import { CodeIndexScope } from "../../services/code-index/code-index-scope"
 
-import { CodeIndexManagerRegistry } from "../../services/code-index/code-index-manager-registry"
 import { checkExistKey } from "../../shared/checkExistApiConfig"
 import { getRouterRemovalMessage, getRouterUnavailableSignInMessage } from "../config/routerRemoval"
 import { experimentDefault } from "../../shared/experiments"
@@ -3017,8 +3017,7 @@ export const webviewMessageHandler = async (
 
 		case "requestIndexingStatus": {
 			const scope = provider.getCurrentWorkspaceCodeIndexScope()
-			const manager = scope?.codeIndexManager
-			if (!manager) {
+			if (!scope) {
 				// No workspace open - send error status
 				await provider.postMessageToWebview({
 					type: "indexingStatusUpdate",
@@ -3034,56 +3033,17 @@ export const webviewMessageHandler = async (
 				return
 			}
 
-			const status = manager
-				? manager.getCurrentStatus()
-				: {
-						systemStatus: "Standby",
-						message: "No workspace folder open",
-						processedItems: 0,
-						totalItems: 0,
-						currentItemUnit: "items",
-						workspacePath: undefined,
-					}
-
-			await provider.postMessageToWebview({
-				type: "indexingStatusUpdate",
-				values: status,
-			})
+			await scope.workspaceIndexingStatusManager.postStatus(provider)
 			break
 		}
 		case "requestCodeIndexSecretStatus": {
-			// Check if secrets are set using the VSCode context directly for async access
-			const hasOpenAiKey = !!(await provider.context.secrets.get("codeIndexOpenAiKey"))
-			const hasQdrantApiKey = !!(await provider.context.secrets.get("codeIndexQdrantApiKey"))
-			const hasOpenAiCompatibleApiKey = !!(await provider.context.secrets.get(
-				"codebaseIndexOpenAiCompatibleApiKey",
-			))
-			const hasGeminiApiKey = !!(await provider.context.secrets.get("codebaseIndexGeminiApiKey"))
-			const hasMistralApiKey = !!(await provider.context.secrets.get("codebaseIndexMistralApiKey"))
-			const hasVercelAiGatewayApiKey = !!(await provider.context.secrets.get(
-				"codebaseIndexVercelAiGatewayApiKey",
-			))
-			const hasOpenRouterApiKey = !!(await provider.context.secrets.get("codebaseIndexOpenRouterApiKey"))
-
-			await provider.postMessageToWebview({
-				type: "codeIndexSecretStatus",
-				values: {
-					hasOpenAiKey,
-					hasQdrantApiKey,
-					hasOpenAiCompatibleApiKey,
-					hasGeminiApiKey,
-					hasMistralApiKey,
-					hasVercelAiGatewayApiKey,
-					hasOpenRouterApiKey,
-				},
-			})
+			await CodeIndexScope.getOrCreate(provider.context).secretStatusManager.postStatus(provider)
 			break
 		}
 		case "startIndexing": {
 			try {
 				const scope = provider.getCurrentWorkspaceCodeIndexScope()
-				const manager = scope?.codeIndexManager
-				if (!manager) {
+				if (!scope) {
 					await provider.postMessageToWebview({
 						type: "indexingStatusUpdate",
 						values: {
@@ -3098,24 +3058,7 @@ export const webviewMessageHandler = async (
 					return
 				}
 
-				// "Start Indexing" implicitly enables the workspace
-				await manager.setWorkspaceEnabled(true)
-
-				if (manager.isFeatureEnabled && manager.isFeatureConfigured) {
-					await manager.initialize(provider.contextProxy)
-
-					const currentState = manager.state
-					if (currentState === "Standby" || currentState === "Error") {
-						void manager.startIndexing().catch((err) => provider.log(`Indexing error: ${err}`))
-
-						if (!manager.isInitialized) {
-							await manager.initialize(provider.contextProxy)
-							if (manager.state === "Standby" || manager.state === "Error") {
-								void manager.startIndexing().catch((err) => provider.log(`Indexing error: ${err}`))
-							}
-						}
-					}
-				}
+				await scope.workspaceIndexingStartManager.startIndexing(provider)
 			} catch (error) {
 				provider.log(`Error starting indexing: ${error instanceof Error ? error.message : String(error)}`)
 			}
@@ -3156,30 +3099,11 @@ export const webviewMessageHandler = async (
 		case "setAutoEnableDefault": {
 			try {
 				const scope = provider.getCurrentWorkspaceCodeIndexScope()
-				const manager = scope?.codeIndexManager
-				if (!manager) {
+				if (!scope) {
 					provider.log("Cannot set auto-enable default: No workspace folder open")
 					return
 				}
-				// Capture prior state for every manager before persisting the global change
-				const allManagers = CodeIndexManagerRegistry.getAllInstances()
-				const priorStates = new Map(allManagers.map((m) => [m, m.isWorkspaceEnabled]))
-				await manager.setAutoEnableDefault(message.bool ?? true)
-				// Apply stop/start to every affected manager
-				for (const m of allManagers) {
-					const wasEnabled = priorStates.get(m)!
-					const isNowEnabled = m.isWorkspaceEnabled
-					if (wasEnabled && !isNowEnabled) {
-						m.stopIndexing()
-					} else if (!wasEnabled && isNowEnabled && m.isFeatureEnabled && m.isFeatureConfigured) {
-						await m.initialize(provider.contextProxy)
-						void m.startIndexing().catch((err) => provider.log(`Indexing error: ${err}`))
-					}
-				}
-				await provider.postMessageToWebview({
-					type: "indexingStatusUpdate",
-					values: manager.getCurrentStatus(),
-				})
+				await scope.workspaceIndexingAutoEnableManager.setAutoEnableDefault(message.bool ?? true, provider)
 			} catch (error) {
 				provider.log(
 					`Error setting auto-enable default: ${error instanceof Error ? error.message : String(error)}`,
@@ -3201,8 +3125,7 @@ export const webviewMessageHandler = async (
 					})
 					return
 				}
-				await scope.codeIndexManager.clearIndexData()
-				await provider.postMessageToWebview({ type: "indexCleared", values: { success: true } })
+				await scope.workspaceIndexingClearManager.clearIndexData(provider)
 			} catch (error) {
 				provider.log(`Error clearing index data: ${error instanceof Error ? error.message : String(error)}`)
 				await provider.postMessageToWebview({

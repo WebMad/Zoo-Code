@@ -38,6 +38,10 @@ export class CodeIndexManagerRegistry {
 		return Array.from(this.codeIndexWorkspaceScopes.values(), (scope) => scope.codeIndexManager)
 	}
 
+	public static getAllScopes(): CodeIndexWorkspaceScope[] {
+		return Array.from(this.codeIndexWorkspaceScopes.values())
+	}
+
 	public static disposeAll(): void {
 		for (const [workspacePath, codeIndexWorkspaceScope] of this.codeIndexWorkspaceScopes) {
 			try {

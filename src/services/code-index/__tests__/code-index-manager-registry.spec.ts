@@ -58,6 +58,17 @@ describe("CodeIndexManagerRegistry", () => {
 		expect(CodeIndexManagerRegistry.getOrCreateScope(context)).not.toBe(scope)
 	})
 
+	it("lists existing scopes without creating new ones and clears them on disposal", () => {
+		expect(CodeIndexManagerRegistry.getAllScopes()).toEqual([])
+		const firstScope = CodeIndexManagerRegistry.getOrCreateScope(context, "/first")!
+		const secondScope = CodeIndexManagerRegistry.getOrCreateScope(context, "/second")!
+		expect(CodeIndexManagerRegistry.getAllScopes()).toEqual([firstScope, secondScope])
+		CodeIndexManagerRegistry.getAllScopes().pop()
+		expect(CodeIndexManagerRegistry.getAllScopes()).toHaveLength(2)
+		CodeIndexManagerRegistry.disposeAll()
+		expect(CodeIndexManagerRegistry.getAllScopes()).toEqual([])
+	})
+
 	it("uses the first workspace when there is no active editor", () => {
 		CodeIndexManagerRegistry.getOrCreate(context)
 		expect(CodeIndexManager).toHaveBeenCalledWith("/first", first.uri, context, expect.any(CodeIndexStateManager))

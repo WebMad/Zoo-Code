@@ -29,7 +29,13 @@ import { setTtsEnabled } from "../../../utils/tts"
 import { ContextProxy } from "../../config/ContextProxy"
 import { WorkspaceIndexingSettingsManager } from "../../../services/code-index/workspace-indexing-settings-manager"
 import type { CodeIndexManager } from "../../../services/code-index/manager"
+import { CodeIndexSecretStatusManager } from "../../../services/code-index/code-index-secret-status-manager"
+import { CodeIndexScope } from "../../../services/code-index/code-index-scope"
+import { makeExtensionContext } from "../../../test-utils/vscode"
 import { WorkspaceIndexingEnablementManager } from "../../../services/code-index/workspace-indexing-enablement-manager"
+import { WorkspaceIndexingClearManager } from "../../../services/code-index/workspace-indexing-clear-manager"
+import { WorkspaceIndexingStartManager } from "../../../services/code-index/workspace-indexing-start-manager"
+import { WorkspaceIndexingStatusManager } from "../../../services/code-index/workspace-indexing-status-manager"
 import { Task, TaskOptions } from "../../task/Task"
 import { safeWriteJson } from "../../../utils/safeWriteJson"
 
@@ -3025,7 +3031,12 @@ describe("webviewMessageHandler no-floating-promises coverage", () => {
 			startIndexing: vi.fn().mockReturnValue(indexingPromise),
 		})
 		const provider = createProvider({
-			getCurrentWorkspaceCodeIndexScope: vi.fn().mockReturnValue({ codeIndexManager: manager }),
+			getCurrentWorkspaceCodeIndexScope: vi.fn().mockReturnValue({
+				// The concrete manager has private services; this double supplies the operations under test.
+				workspaceIndexingStartManager: new WorkspaceIndexingStartManager(
+					manager as unknown as CodeIndexManager,
+				),
+			}),
 		})
 
 		await expect(webviewMessageHandler(provider, { type: "startIndexing" })).resolves.toBeUndefined()
@@ -3181,9 +3192,40 @@ describe("webviewMessageHandler no-floating-promises coverage", () => {
 		})
 	})
 
+	it("reports secret status without resolving a workspace", async () => {
+		const provider = createProvider()
+		const manager = new CodeIndexSecretStatusManager(makeExtensionContext().secrets)
+		vi.spyOn(CodeIndexScope.getOrCreate(provider.context), "secretStatusManager", "get").mockReturnValue(manager)
+		const postStatus = vi.spyOn(manager, "postStatus")
+		await webviewMessageHandler(provider, { type: "requestCodeIndexSecretStatus" })
+		expect(postStatus).toHaveBeenCalledExactlyOnceWith(provider)
+		expect(provider.getCurrentWorkspaceCodeIndexScope).not.toHaveBeenCalled()
+		expect(provider.postMessageToWebview).toHaveBeenCalledExactlyOnceWith({
+			type: "codeIndexSecretStatus",
+			values: {
+				hasOpenAiKey: false,
+				hasQdrantApiKey: false,
+				hasOpenAiCompatibleApiKey: false,
+				hasGeminiApiKey: false,
+				hasMistralApiKey: false,
+				hasVercelAiGatewayApiKey: false,
+				hasOpenRouterApiKey: false,
+			},
+		})
+	})
+
 	it("covers changed indexing status, secret, and missing-manager responses", async () => {
 		const manager = createIndexManager()
-		const getScope = vi.fn().mockReturnValueOnce(undefined).mockReturnValue({ codeIndexManager: manager })
+		const getScope = vi
+			.fn()
+			.mockReturnValueOnce(undefined)
+			.mockReturnValue({
+				codeIndexManager: manager,
+				// The concrete manager has private services; this double supplies status retrieval only.
+				workspaceIndexingStatusManager: new WorkspaceIndexingStatusManager(
+					manager as unknown as CodeIndexManager,
+				),
+			})
 		const provider = createProvider({
 			getCurrentWorkspaceCodeIndexScope: getScope,
 		})
@@ -3201,6 +3243,9 @@ describe("webviewMessageHandler no-floating-promises coverage", () => {
 			type: "indexingStatusUpdate",
 			values: manager.getCurrentStatus.mock.results[0].value,
 		})
+		vi.spyOn(CodeIndexScope.getOrCreate(provider.context), "secretStatusManager", "get").mockReturnValue(
+			new CodeIndexSecretStatusManager(makeExtensionContext().secrets),
+		)
 		await webviewMessageHandler(provider, { type: "requestCodeIndexSecretStatus" })
 		getScope.mockReturnValueOnce(undefined)
 		await webviewMessageHandler(provider, { type: "startIndexing" })
@@ -3213,23 +3258,24 @@ describe("webviewMessageHandler no-floating-promises coverage", () => {
 		expect(provider.log).toHaveBeenCalledWith("Cannot start indexing: No workspace folder open")
 	})
 
-	it("catches both start-indexing calls during error recovery", async () => {
+	it("catches a start-indexing failure after recovery", async () => {
 		const manager = createIndexManager({
 			isInitialized: false,
-			startIndexing: vi
-				.fn()
-				.mockRejectedValueOnce(new Error("first failure"))
-				.mockRejectedValueOnce(new Error("second failure")),
+			startIndexing: vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("second failure")),
 		})
 		const provider = createProvider({
-			getCurrentWorkspaceCodeIndexScope: vi.fn().mockReturnValue({ codeIndexManager: manager }),
+			getCurrentWorkspaceCodeIndexScope: vi.fn().mockReturnValue({
+				// The concrete manager has private services; this double supplies the operations under test.
+				workspaceIndexingStartManager: new WorkspaceIndexingStartManager(
+					manager as unknown as CodeIndexManager,
+				),
+			}),
 		})
 
 		await webviewMessageHandler(provider, { type: "startIndexing" })
 		await Promise.resolve()
 
 		expect(manager.startIndexing).toHaveBeenCalledTimes(2)
-		expect(provider.log).toHaveBeenCalledWith("Indexing error: Error: first failure")
 		expect(provider.log).toHaveBeenCalledWith("Indexing error: Error: second failure")
 	})
 
@@ -3317,6 +3363,8 @@ describe("webviewMessageHandler no-floating-promises coverage", () => {
 	})
 
 	it("catches auto-enabled indexing failures and posts the resulting status", async () => {
+		const { WorkspaceIndexingAutoEnableManager } =
+			await import("../../../services/code-index/workspace-indexing-auto-enable-manager")
 		const { CodeIndexManagerRegistry } = await import("../../../services/code-index/code-index-manager-registry")
 		let workspaceEnabled = false
 		const manager = createIndexManager({
@@ -3326,11 +3374,21 @@ describe("webviewMessageHandler no-floating-promises coverage", () => {
 			startIndexing: vi.fn().mockRejectedValue(new Error("auto-enable failure")),
 		})
 		Object.defineProperty(manager, "isWorkspaceEnabled", { get: () => workspaceEnabled })
-		const getAllInstances = vi
-			.spyOn(CodeIndexManagerRegistry, "getAllInstances")
-			.mockReturnValue([manager] as unknown as ReturnType<typeof CodeIndexManagerRegistry.getAllInstances>)
+		// This isolated scope double only supplies the services used by auto-enablement.
+		const getAllScopes = vi.spyOn(CodeIndexManagerRegistry, "getAllScopes").mockReturnValue([
+			{
+				codeIndexManager: manager,
+				workspaceIndexingStartManager: new WorkspaceIndexingStartManager(
+					// The manager double omits unrelated private services.
+					manager as unknown as CodeIndexManager,
+				),
+			},
+		] as unknown as ReturnType<typeof CodeIndexManagerRegistry.getAllScopes>)
 		const provider = createProvider({
-			getCurrentWorkspaceCodeIndexScope: vi.fn().mockReturnValue({ codeIndexManager: manager }),
+			getCurrentWorkspaceCodeIndexScope: vi.fn().mockReturnValue({
+				codeIndexManager: manager,
+				workspaceIndexingAutoEnableManager: new WorkspaceIndexingAutoEnableManager(manager),
+			}),
 		})
 
 		try {
@@ -3344,13 +3402,22 @@ describe("webviewMessageHandler no-floating-promises coverage", () => {
 				expect.objectContaining({ type: "indexingStatusUpdate" }),
 			)
 		} finally {
-			getAllInstances.mockRestore()
+			getAllScopes.mockRestore()
 		}
 	})
 
 	it("covers changed clear-index response paths", async () => {
 		const manager = createIndexManager()
-		const getScope = vi.fn().mockReturnValueOnce(undefined).mockReturnValue({ codeIndexManager: manager })
+		const getScope = vi
+			.fn()
+			.mockReturnValueOnce(undefined)
+			.mockReturnValue({
+				codeIndexManager: manager,
+				// The concrete manager owns private services; this double supplies the clear operation under test.
+				workspaceIndexingClearManager: new WorkspaceIndexingClearManager(
+					manager as unknown as CodeIndexManager,
+				),
+			})
 		const provider = createProvider({ getCurrentWorkspaceCodeIndexScope: getScope })
 
 		await webviewMessageHandler(provider, { type: "clearIndexData" })

@@ -4,6 +4,10 @@ import { CodeIndexWorkspaceScope } from "../code-index-workspace-scope"
 import { CodeIndexStateManager } from "../state-manager"
 import { WorkspaceIndexingEnablementManager } from "../workspace-indexing-enablement-manager"
 import { WorkspaceIndexingSettingsManager } from "../workspace-indexing-settings-manager"
+import { WorkspaceIndexingAutoEnableManager } from "../workspace-indexing-auto-enable-manager"
+import { WorkspaceIndexingClearManager } from "../workspace-indexing-clear-manager"
+import { WorkspaceIndexingStartManager } from "../workspace-indexing-start-manager"
+import { WorkspaceIndexingStatusManager } from "../workspace-indexing-status-manager"
 
 vi.mock("../state-manager")
 
@@ -20,7 +24,7 @@ describe("CodeIndexWorkspaceScope", () => {
 		const scope = new CodeIndexWorkspaceScope("/workspace", makeUri("/workspace"), makeExtensionContext())
 		const getter = vi.spyOn(scope, "codeIndexManager", "get")
 		scope.init()
-		expect(getter).toHaveBeenCalledTimes(2)
+		expect(getter).toHaveBeenCalledTimes(6)
 		expect(scope.workspaceIndexingSettingsManager["manager"]).toBe(scope.codeIndexManager)
 	})
 
@@ -48,6 +52,58 @@ describe("CodeIndexWorkspaceScope", () => {
 		expect(() => scope.workspaceIndexingEnablementManager).toThrow("not initialized")
 		scope.init()
 		expect(scope.workspaceIndexingEnablementManager).not.toBe(indexing)
+	})
+
+	it("owns a guarded auto-enable manager and recreates it after disposal", () => {
+		const scope = new CodeIndexWorkspaceScope("/workspace", makeUri("/workspace"), makeExtensionContext())
+		expect(() => scope.workspaceIndexingAutoEnableManager).toThrow("not initialized")
+		scope.init()
+		const indexing = scope.workspaceIndexingAutoEnableManager
+		expect(indexing).toBeInstanceOf(WorkspaceIndexingAutoEnableManager)
+		expect(indexing["manager"]).toBe(scope.codeIndexManager)
+		scope.dispose()
+		expect(() => scope.workspaceIndexingAutoEnableManager).toThrow("not initialized")
+		scope.init()
+		expect(scope.workspaceIndexingAutoEnableManager).not.toBe(indexing)
+	})
+
+	it("owns a guarded clear manager and recreates it after disposal", () => {
+		const scope = new CodeIndexWorkspaceScope("/workspace", makeUri("/workspace"), makeExtensionContext())
+		expect(() => scope.workspaceIndexingClearManager).toThrow("not initialized")
+		scope.init()
+		const clearing = scope.workspaceIndexingClearManager
+		expect(clearing).toBeInstanceOf(WorkspaceIndexingClearManager)
+		expect(clearing["manager"]).toBe(scope.codeIndexManager)
+		scope.dispose()
+		expect(() => scope.workspaceIndexingClearManager).toThrow("not initialized")
+		scope.init()
+		expect(scope.workspaceIndexingClearManager).not.toBe(clearing)
+	})
+
+	it("owns a guarded start manager and recreates it after disposal", () => {
+		const scope = new CodeIndexWorkspaceScope("/workspace", makeUri("/workspace"), makeExtensionContext())
+		expect(() => scope.workspaceIndexingStartManager).toThrow("not initialized")
+		scope.init()
+		const starting = scope.workspaceIndexingStartManager
+		expect(starting).toBeInstanceOf(WorkspaceIndexingStartManager)
+		expect(starting["manager"]).toBe(scope.codeIndexManager)
+		scope.dispose()
+		expect(() => scope.workspaceIndexingStartManager).toThrow("not initialized")
+		scope.init()
+		expect(scope.workspaceIndexingStartManager).not.toBe(starting)
+	})
+
+	it("owns a guarded status manager and recreates it after disposal", () => {
+		const scope = new CodeIndexWorkspaceScope("/workspace", makeUri("/workspace"), makeExtensionContext())
+		expect(() => scope.workspaceIndexingStatusManager).toThrow("not initialized")
+		scope.init()
+		const status = scope.workspaceIndexingStatusManager
+		expect(status).toBeInstanceOf(WorkspaceIndexingStatusManager)
+		expect(status["manager"]).toBe(scope.codeIndexManager)
+		scope.dispose()
+		expect(() => scope.workspaceIndexingStatusManager).toThrow("not initialized")
+		scope.init()
+		expect(scope.workspaceIndexingStatusManager).not.toBe(status)
 	})
 
 	it("guards generic values and preserves defined falsy values", () => {
