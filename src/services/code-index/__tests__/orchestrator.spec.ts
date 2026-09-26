@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { CodeIndexOrchestrator } from "../orchestrator"
 import { TelemetryService } from "@roo-code/telemetry"
+import * as vscode from "vscode"
 
 import { clearAllMocks } from "../../../test-utils/reset"
 
@@ -306,6 +307,175 @@ describe("CodeIndexOrchestrator - error path cleanup gating", () => {
 		orchestrator.stopWatcher()
 		expect(disposeProgress).toHaveBeenCalledTimes(1)
 		expect(disposeFinished).toHaveBeenCalledTimes(1)
+	})
+
+	it.each([undefined, []])("rejects indexing without workspace folders (%s)", async (folders) => {
+		const original = vscode.workspace.workspaceFolders
+		Object.defineProperty(vscode.workspace, "workspaceFolders", { value: folders, configurable: true })
+		try {
+			const orchestrator = new CodeIndexOrchestrator(
+				configManager,
+				stateManager,
+				workspacePath,
+				cacheManager,
+				vectorStore,
+				scanner,
+				fileWatcher,
+			)
+			await orchestrator.startIndexing()
+			expect(orchestrator.state).toBe("Error")
+			expect(vectorStore.initialize).not.toHaveBeenCalled()
+		} finally {
+			Object.defineProperty(vscode.workspace, "workspaceFolders", { value: original, configurable: true })
+		}
+	})
+
+	it("rejects indexing without configuration", async () => {
+		configManager.isFeatureConfigured = false
+		const orchestrator = new CodeIndexOrchestrator(
+			configManager,
+			stateManager,
+			workspacePath,
+			cacheManager,
+			vectorStore,
+			scanner,
+			fileWatcher,
+		)
+		await orchestrator.startIndexing()
+		expect(orchestrator.state).toBe("Standby")
+		expect(vectorStore.initialize).not.toHaveBeenCalled()
+	})
+
+	it.each(["Indexing", "Stopping"])("rejects indexing in %s state", async (state) => {
+		stateManager.setSystemState(state, "busy")
+		const orchestrator = new CodeIndexOrchestrator(
+			configManager,
+			stateManager,
+			workspacePath,
+			cacheManager,
+			vectorStore,
+			scanner,
+			fileWatcher,
+		)
+		await orchestrator.startIndexing()
+		expect(orchestrator.state).toBe(state)
+		expect(vectorStore.initialize).not.toHaveBeenCalled()
+	})
+
+	it.each(["configuration lost", "watcher failed"])("handles watcher startup failure: %s", async (failure) => {
+		vectorStore.initialize.mockResolvedValue(false)
+		vectorStore.hasIndexedData.mockResolvedValue(true)
+		scanner.scanDirectory.mockImplementation(async () => {
+			if (failure === "configuration lost") configManager.isFeatureConfigured = false
+			return { stats: { processed: 0, skipped: 0 }, totalBlockCount: 0 }
+		})
+		fileWatcher.initialize.mockRejectedValue(new Error("watcher failed"))
+		const orchestrator = new CodeIndexOrchestrator(
+			configManager,
+			stateManager,
+			workspacePath,
+			cacheManager,
+			vectorStore,
+			scanner,
+			fileWatcher,
+		)
+		await orchestrator.startIndexing()
+		expect(orchestrator.state).toBe("Error")
+		expect(vectorStore.markIndexingComplete).not.toHaveBeenCalled()
+		expect(fileWatcher.dispose).toHaveBeenCalled()
+		expect(TelemetryService.instance.captureEvent).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.objectContaining({ location: "startIndexing" }),
+		)
+		if (failure === "watcher failed") {
+			expect(TelemetryService.instance.captureEvent).toHaveBeenCalledWith(
+				expect.any(String),
+				expect.objectContaining({ location: "_startWatcher", error: failure }),
+			)
+		} else {
+			expect(fileWatcher.initialize).not.toHaveBeenCalled()
+		}
+	})
+
+	it("preserves the original error when collection cleanup rejects a non-Error value", async () => {
+		vectorStore.initialize.mockResolvedValue(false)
+		vectorStore.hasIndexedData.mockResolvedValue(false)
+		scanner.scanDirectory.mockRejectedValue(new Error("original failure"))
+		vectorStore.clearCollection.mockRejectedValue("cleanup failed")
+		const orchestrator = new CodeIndexOrchestrator(
+			configManager,
+			stateManager,
+			workspacePath,
+			cacheManager,
+			vectorStore,
+			scanner,
+			fileWatcher,
+		)
+		await orchestrator.startIndexing()
+		expect(cacheManager.clearCacheFile).toHaveBeenCalledOnce()
+		expect(stateManager.setSystemState).toHaveBeenLastCalledWith(
+			"Error",
+			expect.stringContaining("original failure"),
+		)
+		expect(TelemetryService.instance.captureEvent).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.objectContaining({ location: "startIndexing.cleanup", error: "cleanup failed", stack: undefined }),
+		)
+	})
+
+	it.each([null, "connection failed", { message: "" }])("handles unexpected rejection values (%s)", async (error) => {
+		vectorStore.initialize.mockRejectedValue(error)
+		const orchestrator = new CodeIndexOrchestrator(
+			configManager,
+			stateManager,
+			workspacePath,
+			cacheManager,
+			vectorStore,
+			scanner,
+			fileWatcher,
+		)
+		await expect(orchestrator.startIndexing()).resolves.toBeUndefined()
+		expect(stateManager.setSystemState).toHaveBeenLastCalledWith("Error", expect.stringContaining("unknownError"))
+		expect(fileWatcher.dispose).toHaveBeenCalled()
+	})
+
+	it("clears cache without deleting storage when configuration is missing", async () => {
+		configManager.isFeatureConfigured = false
+		vectorStore.deleteCollection = vi.fn()
+		const orchestrator = new CodeIndexOrchestrator(
+			configManager,
+			stateManager,
+			workspacePath,
+			cacheManager,
+			vectorStore,
+			scanner,
+			fileWatcher,
+		)
+		await orchestrator.clearIndexData()
+		expect(vectorStore.deleteCollection).not.toHaveBeenCalled()
+		expect(cacheManager.clearCacheFile).toHaveBeenCalledOnce()
+		expect(orchestrator.state).toBe("Standby")
+	})
+
+	it("reports non-Error deletion failures and releases the clearing guard", async () => {
+		vectorStore.deleteCollection = vi.fn().mockRejectedValueOnce("delete failed").mockResolvedValue(undefined)
+		const orchestrator = new CodeIndexOrchestrator(
+			configManager,
+			stateManager,
+			workspacePath,
+			cacheManager,
+			vectorStore,
+			scanner,
+			fileWatcher,
+		)
+		await orchestrator.clearIndexData()
+		expect(stateManager.setSystemState).toHaveBeenLastCalledWith(
+			"Error",
+			"Failed to clear index data: delete failed",
+		)
+		expect(cacheManager.clearCacheFile).not.toHaveBeenCalled()
+		await orchestrator.clearIndexData()
+		expect(orchestrator.state).toBe("Standby")
 	})
 
 	it("should preserve existing data when checking collection contents fails", async () => {
@@ -626,6 +796,8 @@ describe("CodeIndexOrchestrator - stopIndexing", () => {
 		const clearing = orchestrator.clearIndexData()
 		await deletionStarted
 		try {
+			await orchestrator.clearIndexData()
+			expect(vectorStore.deleteCollection).toHaveBeenCalledTimes(1)
 			await orchestrator.startIndexing()
 			expect(vectorStore.initialize).not.toHaveBeenCalled()
 			expect(cacheManager.clearCacheFile).not.toHaveBeenCalled()

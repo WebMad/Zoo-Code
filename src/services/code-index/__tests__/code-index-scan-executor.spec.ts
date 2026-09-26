@@ -12,6 +12,16 @@ describe("CodeIndexScanExecutor", () => {
 		return { scanner, vectorStore, stateManager, executor }
 	}
 
+	it.each(["runFullScan", "runIncrementalScan"] as const)("%s rejects a missing scanner result", async (method) => {
+		const { executor } = setup()
+		// An unconfigured mock returns undefined, simulating a broken scanner contract.
+		await expect(executor[method](new AbortController().signal)).rejects.toThrow(
+			method === "runFullScan"
+				? "Scan failed, is scanner initialized?"
+				: "Incremental scan failed, is scanner initialized?",
+		)
+	})
+
 	it.each(["runFullScan", "runIncrementalScan"] as const)(
 		"%s reports progress without completing the operation",
 		async (method) => {
