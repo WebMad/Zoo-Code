@@ -5,6 +5,7 @@ import { CodeIndexStateManager, IndexingState } from "./state-manager"
 import { IFileWatcher, IVectorStore, BatchProcessingSummary } from "./interfaces"
 import { DirectoryScanner } from "./processors"
 import { CacheManager } from "./cache-manager"
+import { CodeIndexScanExecutor } from "./code-index-scan-executor"
 import { TelemetryService } from "@roo-code/telemetry"
 import { TelemetryEventName } from "@roo-code/types"
 import { t } from "../../i18n"
@@ -14,347 +15,244 @@ import { t } from "../../i18n"
  */
 export class CodeIndexOrchestrator {
 	private _fileWatcherSubscriptions: vscode.Disposable[] = []
-	private _isProcessing: boolean = false
+	private _isProcessing = false
 	private _abortController: AbortController | null = null
+	private _indexingFinished: Promise<void> | undefined
+	private _isClearing = false
+	private readonly scanExecutor: CodeIndexScanExecutor
 
 	constructor(
 		private readonly configManager: CodeIndexConfigManager,
 		private readonly stateManager: CodeIndexStateManager,
-		private readonly workspacePath: string,
+		workspacePath: string,
 		private readonly cacheManager: CacheManager,
 		private readonly vectorStore: IVectorStore,
-		private readonly scanner: DirectoryScanner,
+		scanner: DirectoryScanner,
 		private readonly fileWatcher: IFileWatcher,
-	) {}
+	) {
+		this.scanExecutor = new CodeIndexScanExecutor(workspacePath, scanner, vectorStore, stateManager)
+	}
 
 	/**
 	 * Starts the file watcher if not already running.
 	 */
-	private async _startWatcher(): Promise<void> {
+	private async _startWatcher(signal: AbortSignal): Promise<void> {
+		signal.throwIfAborted()
 		if (!this.configManager.isFeatureConfigured) {
 			throw new Error("Cannot start watcher: Service not configured.")
 		}
+		if (this._fileWatcherSubscriptions.length > 0) return
 
 		this.stateManager.setSystemState("Indexing", "Initializing file watcher...")
 
 		try {
 			await this.fileWatcher.initialize()
+			signal.throwIfAborted()
 
 			this._fileWatcherSubscriptions = [
-				this.fileWatcher.onDidStartBatchProcessing((filePaths: string[]) => {}),
-				this.fileWatcher.onBatchProgressUpdate(({ processedInBatch, totalInBatch, currentFile }) => {
-					if (totalInBatch > 0 && this.stateManager.state !== "Indexing") {
-						this.stateManager.setSystemState("Indexing", "Processing file changes...")
-					}
-					this.stateManager.reportFileQueueProgress(
-						processedInBatch,
-						totalInBatch,
-						currentFile ? path.basename(currentFile) : undefined,
-					)
-					if (processedInBatch === totalInBatch) {
-						// Covers (N/N) and (0/0)
-						if (totalInBatch > 0) {
-							// Batch with items completed
-							this.stateManager.setSystemState("Indexed", "File changes processed. Index up-to-date.")
-						} else {
-							if (this.stateManager.state === "Indexing") {
-								// Only transition if it was "Indexing"
-								this.stateManager.setSystemState("Indexed", "Index up-to-date. File queue empty.")
-							}
-						}
-					}
-				}),
-				this.fileWatcher.onDidFinishBatchProcessing((summary: BatchProcessingSummary) => {
-					if (summary.batchError) {
-						console.error(`[CodeIndexOrchestrator] Batch processing failed:`, summary.batchError)
-					} else {
-						const successCount = summary.processedFiles.filter(
-							(f: { status: string }) => f.status === "success",
-						).length
-						const errorCount = summary.processedFiles.filter(
-							(f: { status: string }) => f.status === "error" || f.status === "local_error",
-						).length
-					}
-				}),
+				this.fileWatcher.onBatchProgressUpdate((progress) => this._handleBatchProgress(progress)),
+				this.fileWatcher.onDidFinishBatchProcessing((summary) => this._handleBatchFinished(summary)),
 			]
 		} catch (error) {
-			console.error("[CodeIndexOrchestrator] Failed to start file watcher:", error)
-			TelemetryService.instance.captureEvent(TelemetryEventName.CODE_INDEX_ERROR, {
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-				location: "_startWatcher",
-			})
+			if (this._isCancellation(error, signal)) {
+				throw error
+			}
+			this._reportError("[CodeIndexOrchestrator] Failed to start file watcher:", error, "_startWatcher")
 			throw error
 		}
 	}
 
-	/**
-	 * Updates the status of a file in the state manager.
-	 */
+	private _handleBatchProgress({
+		processedInBatch,
+		totalInBatch,
+		currentFile,
+	}: {
+		processedInBatch: number
+		totalInBatch: number
+		currentFile?: string
+	}): void {
+		if (processedInBatch < totalInBatch && this.stateManager.state !== "Indexing") {
+			this.stateManager.setSystemState("Indexing", "Processing file changes...")
+		}
+		this.stateManager.reportFileQueueProgress(
+			processedInBatch,
+			totalInBatch,
+			currentFile ? path.basename(currentFile) : undefined,
+		)
+	}
+
+	private _handleBatchFinished(summary: BatchProcessingSummary): void {
+		if (summary.batchError) {
+			console.error("[CodeIndexOrchestrator] Batch processing failed:", summary.batchError)
+			this.stateManager.setSystemState("Error", summary.batchError.message)
+			return
+		}
+		const failedFile = summary.processedFiles.find(
+			(file) => file.status === "error" || file.status === "local_error",
+		)
+		if (failedFile) {
+			this.stateManager.setSystemState(
+				"Error",
+				failedFile.error?.message ?? `Failed to index file: ${failedFile.path}`,
+			)
+			return
+		}
+		this.stateManager.setSystemState("Indexed", "File changes processed. Index up-to-date.")
+	}
 
 	/**
-	 * Initiates the indexing process (initial scan and starts watcher).
+	 * Checks start preconditions and reports why a request was rejected.
 	 */
-	public async startIndexing(): Promise<void> {
+	private _canStartIndexing(): boolean {
+		if (this._isClearing) {
+			return false
+		}
+
 		// Check if workspace is available first
-		if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+		if (!vscode.workspace.workspaceFolders?.length) {
 			this.stateManager.setSystemState("Error", t("embeddings:orchestrator.indexingRequiresWorkspace"))
 			console.warn("[CodeIndexOrchestrator] Start rejected: No workspace folder open.")
-			return
+			return false
 		}
 
 		if (!this.configManager.isFeatureConfigured) {
 			this.stateManager.setSystemState("Standby", "Missing configuration. Save your settings to start indexing.")
 			console.warn("[CodeIndexOrchestrator] Start rejected: Missing configuration.")
-			return
+			return false
 		}
 
-		if (
-			this._isProcessing ||
-			(this.stateManager.state !== "Standby" &&
-				this.stateManager.state !== "Error" &&
-				this.stateManager.state !== "Indexed")
-		) {
+		if (this._isProcessing || !["Standby", "Error", "Indexed"].includes(this.stateManager.state)) {
 			console.warn(
 				`[CodeIndexOrchestrator] Start rejected: Already processing or in state ${this.stateManager.state}.`,
 			)
-			return
+			return false
 		}
 
+		return true
+	}
+
+	/** Runs a scan and starts watching files, retaining ownership until cleanup finishes. */
+	public async startIndexing(): Promise<void> {
+		if (!this._canStartIndexing()) return
+
 		this._isProcessing = true
+		let finishIndexing!: () => void
+		this._indexingFinished = new Promise<void>((resolve) => {
+			finishIndexing = resolve
+		})
 		this._abortController = new AbortController()
 		const signal = this._abortController.signal
 		this.stateManager.setSystemState("Indexing", "Initializing services...")
 
-		// Track whether we successfully connected to Qdrant and started indexing
-		// This helps us decide whether to preserve cache on error
-		let indexingStarted = false
+		// Destructive cleanup is only allowed after selecting a full scan.
+		let fullScanStarted = false
 
 		try {
 			const collectionCreated = await this.vectorStore.initialize()
-
-			// Successfully connected to Qdrant
-			indexingStarted = true
 
 			if (collectionCreated) {
 				await this.cacheManager.clearCacheFile()
 			}
 
-			// Check if the collection already has indexed data
-			// If it does, we can skip the full scan and just start the watcher
+			// Existing data can be updated incrementally using the cache.
 			const hasExistingData = await this.vectorStore.hasIndexedData()
 
 			if (hasExistingData && !collectionCreated) {
-				// Collection exists with data - run incremental scan to catch any new/changed files
-				// This handles files added while workspace was closed or Qdrant was inactive
-				console.log(
-					"[CodeIndexOrchestrator] Collection already has indexed data. Running incremental scan for new/changed files...",
-				)
-				this.stateManager.setSystemState("Indexing", "Checking for new or modified files...")
-
-				// Mark as incomplete at the start of incremental scan
-				await this.vectorStore.markIndexingIncomplete()
-
-				let cumulativeBlocksIndexed = 0
-				let cumulativeBlocksFoundSoFar = 0
-				const batchErrors: Error[] = []
-
-				const handleFileParsed = (fileBlockCount: number) => {
-					cumulativeBlocksFoundSoFar += fileBlockCount
-					this.stateManager.reportBlockIndexingProgress(cumulativeBlocksIndexed, cumulativeBlocksFoundSoFar)
-				}
-
-				const handleBlocksIndexed = (indexedCount: number) => {
-					cumulativeBlocksIndexed += indexedCount
-					this.stateManager.reportBlockIndexingProgress(cumulativeBlocksIndexed, cumulativeBlocksFoundSoFar)
-				}
-
-				// Run incremental scan - scanner will skip unchanged files using cache
-				const result = await this.scanner.scanDirectory(
-					this.workspacePath,
-					(batchError: Error) => {
-						console.error(
-							`[CodeIndexOrchestrator] Error during incremental scan batch: ${batchError.message}`,
-							batchError,
-						)
-						batchErrors.push(batchError)
-					},
-					handleBlocksIndexed,
-					handleFileParsed,
-					signal,
-				)
-
-				if (signal.aborted) {
-					await this.cacheManager.flush()
-					this.stopWatcher()
-					this.stateManager.setSystemState("Standby", t("embeddings:orchestrator.indexingStopped"))
-					return
-				}
-
-				if (!result) {
-					throw new Error("Incremental scan failed, is scanner initialized?")
-				}
-
-				// If new files were found and indexed, log the results
-				if (cumulativeBlocksFoundSoFar > 0) {
-					console.log(
-						`[CodeIndexOrchestrator] Incremental scan completed: ${cumulativeBlocksIndexed} blocks indexed from new/changed files`,
-					)
-				} else {
-					console.log("[CodeIndexOrchestrator] No new or changed files found")
-				}
-
-				await this._startWatcher()
-
-				// Mark indexing as complete after successful incremental scan
-				await this.vectorStore.markIndexingComplete()
-
-				this.stateManager.setSystemState("Indexed", t("embeddings:orchestrator.fileWatcherStarted"))
+				await this.scanExecutor.runIncrementalScan(signal)
 			} else {
-				// No existing data or collection was just created - do a full scan
-				this.stateManager.setSystemState("Indexing", "Services ready. Starting workspace scan...")
-
-				// Mark as incomplete at the start of full scan
-				await this.vectorStore.markIndexingIncomplete()
-
-				let cumulativeBlocksIndexed = 0
-				let cumulativeBlocksFoundSoFar = 0
-				const batchErrors: Error[] = []
-
-				const handleFileParsed = (fileBlockCount: number) => {
-					cumulativeBlocksFoundSoFar += fileBlockCount
-					this.stateManager.reportBlockIndexingProgress(cumulativeBlocksIndexed, cumulativeBlocksFoundSoFar)
-				}
-
-				const handleBlocksIndexed = (indexedCount: number) => {
-					cumulativeBlocksIndexed += indexedCount
-					this.stateManager.reportBlockIndexingProgress(cumulativeBlocksIndexed, cumulativeBlocksFoundSoFar)
-				}
-
-				const result = await this.scanner.scanDirectory(
-					this.workspacePath,
-					(batchError: Error) => {
-						console.error(
-							`[CodeIndexOrchestrator] Error during initial scan batch: ${batchError.message}`,
-							batchError,
-						)
-						batchErrors.push(batchError)
-					},
-					handleBlocksIndexed,
-					handleFileParsed,
-					signal,
-				)
-
-				if (signal.aborted) {
-					await this.cacheManager.flush()
-					this.stopWatcher()
-					this.stateManager.setSystemState("Standby", t("embeddings:orchestrator.indexingStopped"))
-					return
-				}
-
-				if (!result) {
-					throw new Error("Scan failed, is scanner initialized?")
-				}
-
-				const { stats } = result
-
-				// Check if any blocks were actually indexed successfully
-				// If no blocks were indexed but blocks were found, it means all batches failed
-				if (cumulativeBlocksIndexed === 0 && cumulativeBlocksFoundSoFar > 0) {
-					if (batchErrors.length > 0) {
-						// Use the first batch error as it's likely representative of the main issue
-						const firstError = batchErrors[0]
-						throw new Error(`Indexing failed: ${firstError.message}`)
-					} else {
-						throw new Error(t("embeddings:orchestrator.indexingFailedNoBlocks"))
-					}
-				}
-
-				// Check for partial failures - if a significant portion of blocks failed
-				const failureRate = (cumulativeBlocksFoundSoFar - cumulativeBlocksIndexed) / cumulativeBlocksFoundSoFar
-				if (batchErrors.length > 0 && failureRate > 0.1) {
-					// More than 10% of blocks failed to index
-					const firstError = batchErrors[0]
-					throw new Error(
-						`Indexing partially failed: Only ${cumulativeBlocksIndexed} of ${cumulativeBlocksFoundSoFar} blocks were indexed. ${firstError.message}`,
-					)
-				}
-
-				// CRITICAL: If there were ANY batch errors and NO blocks were successfully indexed,
-				// this is a complete failure regardless of the failure rate calculation
-				if (batchErrors.length > 0 && cumulativeBlocksIndexed === 0) {
-					const firstError = batchErrors[0]
-					throw new Error(`Indexing failed completely: ${firstError.message}`)
-				}
-
-				// Final sanity check: If we found blocks but indexed none and somehow no errors were reported,
-				// this is still a failure
-				if (cumulativeBlocksFoundSoFar > 0 && cumulativeBlocksIndexed === 0) {
-					throw new Error(t("embeddings:orchestrator.indexingFailedCritical"))
-				}
-
-				await this._startWatcher()
-
-				// Mark indexing as complete after successful full scan
-				await this.vectorStore.markIndexingComplete()
-
-				this.stateManager.setSystemState("Indexed", t("embeddings:orchestrator.fileWatcherStarted"))
+				fullScanStarted = true
+				await this.scanExecutor.runFullScan(signal)
 			}
-		} catch (error: any) {
-			// Handle abort gracefully — not an error, just a user-initiated stop
-			if (error?.name === "AbortError" || signal.aborted) {
-				console.log("[CodeIndexOrchestrator] Indexing aborted by user.")
-				await this.cacheManager.flush()
-				this.stopWatcher()
-				this.stateManager.setSystemState("Standby", t("embeddings:orchestrator.indexingStopped"))
-				return
-			}
-
-			console.error("[CodeIndexOrchestrator] Error during indexing:", error)
-			TelemetryService.instance.captureEvent(TelemetryEventName.CODE_INDEX_ERROR, {
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-				location: "startIndexing",
-			})
-			if (indexingStarted) {
-				try {
-					await this.vectorStore.clearCollection()
-				} catch (cleanupError) {
-					console.error("[CodeIndexOrchestrator] Failed to clean up after error:", cleanupError)
-					TelemetryService.instance.captureEvent(TelemetryEventName.CODE_INDEX_ERROR, {
-						error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
-						stack: cleanupError instanceof Error ? cleanupError.stack : undefined,
-						location: "startIndexing.cleanup",
-					})
-				}
-			}
-
-			// Only clear cache if indexing had started (Qdrant connection succeeded)
-			// If we never connected to Qdrant, preserve cache for incremental scan when it comes back
-			if (indexingStarted) {
-				// Indexing started but failed mid-way - clear cache to avoid cache-Qdrant mismatch
-				await this.cacheManager.clearCacheFile()
-				console.log(
-					"[CodeIndexOrchestrator] Indexing failed after starting. Clearing cache to avoid inconsistency.",
-				)
-			} else {
-				// Never connected to Qdrant - preserve cache for future incremental scan
-				console.log(
-					"[CodeIndexOrchestrator] Failed to connect to Qdrant. Preserving cache for future incremental scan.",
-				)
-			}
-
-			this.stateManager.setSystemState(
-				"Error",
-				t("embeddings:orchestrator.failedDuringInitialScan", {
-					errorMessage: error.message || t("embeddings:orchestrator.unknownError"),
-				}),
-			)
-			this.stopWatcher()
+			await this._completeIndexing(signal)
+		} catch (error) {
+			await this._handleIndexingError(error, signal, fullScanStarted)
 		} finally {
 			this._isProcessing = false
 			this._abortController = null
+			this._indexingFinished = undefined
+			finishIndexing()
 		}
+	}
+
+	private async _handleIndexingError(error: unknown, signal: AbortSignal, clearIndexOnError: boolean): Promise<void> {
+		if (this._isCancellation(error, signal)) {
+			await this._finishCancellation()
+			return
+		}
+
+		this._reportError("[CodeIndexOrchestrator] Error during indexing:", error, "startIndexing")
+		if (clearIndexOnError) {
+			await this._cleanupFailedFullScan()
+		} else {
+			console.log("[CodeIndexOrchestrator] Preserving existing index and cache for a future incremental scan.")
+		}
+
+		const errorMessage =
+			typeof error === "object" && error !== null && "message" in error && error.message
+				? error.message
+				: t("embeddings:orchestrator.unknownError")
+		this.stateManager.setSystemState(
+			"Error",
+			t("embeddings:orchestrator.failedDuringInitialScan", { errorMessage }),
+		)
+		this.stopWatcher()
+	}
+
+	private _reportError(message: string, error: unknown, location: string): void {
+		console.error(message, error)
+		TelemetryService.instance.captureEvent(TelemetryEventName.CODE_INDEX_ERROR, {
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+			location,
+		})
+	}
+
+	private _isCancellation(error: unknown, signal: AbortSignal): boolean {
+		return (
+			signal.aborted ||
+			(typeof error === "object" && error !== null && "name" in error && error.name === "AbortError")
+		)
+	}
+
+	private async _finishCancellation(): Promise<void> {
+		console.log("[CodeIndexOrchestrator] Indexing aborted by user.")
+		try {
+			await this.cacheManager.flush()
+		} catch (flushError) {
+			console.error("[CodeIndexOrchestrator] Failed to flush cache after cancellation:", flushError)
+		}
+		this.stopWatcher()
+		this.stateManager.setSystemState("Standby", t("embeddings:orchestrator.indexingStopped"))
+	}
+
+	private async _cleanupFailedFullScan(): Promise<void> {
+		try {
+			await this.vectorStore.clearCollection()
+		} catch (cleanupError) {
+			this._reportError(
+				"[CodeIndexOrchestrator] Failed to clean up after error:",
+				cleanupError,
+				"startIndexing.cleanup",
+			)
+		}
+		try {
+			await this.cacheManager.clearCacheFile()
+		} catch (cleanupError) {
+			console.error("[CodeIndexOrchestrator] Failed to clear cache after indexing error:", cleanupError)
+		}
+		console.log("[CodeIndexOrchestrator] Indexing failed after starting. Clearing cache to avoid inconsistency.")
+	}
+
+	private async _completeIndexing(signal: AbortSignal): Promise<void> {
+		await this._startWatcher(signal)
+		signal.throwIfAborted()
+		await this.vectorStore.markIndexingComplete()
+		if (signal.aborted) {
+			await this.vectorStore.markIndexingIncomplete()
+		}
+		signal.throwIfAborted()
+
+		this.stateManager.setSystemState("Indexed", t("embeddings:orchestrator.fileWatcherStarted"))
 	}
 
 	/**
@@ -377,45 +275,41 @@ export class CodeIndexOrchestrator {
 		this._fileWatcherSubscriptions.forEach((sub) => sub.dispose())
 		this._fileWatcherSubscriptions = []
 
-		if (this.stateManager.state !== "Error" && this.stateManager.state !== "Stopping") {
+		if (!["Error", "Stopping"].includes(this.stateManager.state)) {
 			this.stateManager.setSystemState("Standby", t("embeddings:orchestrator.fileWatcherStopped"))
 		}
-		this._isProcessing = false
 	}
 
 	/**
-	 * Clears all index data by stopping the watcher, clearing the vector store,
+	 * Clears all index data by stopping indexing, clearing the vector store,
 	 * and resetting the cache file.
 	 */
 	public async clearIndexData(): Promise<void> {
-		this._isProcessing = true
+		if (this._isClearing) {
+			return
+		}
+		this._isClearing = true
 
 		try {
-			await this.stopWatcher()
+			this.stopIndexing()
+			await this._indexingFinished
+			// A scan may have been starting the watcher when cancellation was requested.
+			this.stopWatcher()
 
-			try {
-				if (this.configManager.isFeatureConfigured) {
-					await this.vectorStore.deleteCollection()
-				} else {
-					console.warn("[CodeIndexOrchestrator] Service not configured, skipping vector collection clear.")
-				}
-			} catch (error: any) {
-				console.error("[CodeIndexOrchestrator] Failed to clear vector collection:", error)
-				TelemetryService.instance.captureEvent(TelemetryEventName.CODE_INDEX_ERROR, {
-					error: error instanceof Error ? error.message : String(error),
-					stack: error instanceof Error ? error.stack : undefined,
-					location: "clearIndexData",
-				})
-				this.stateManager.setSystemState("Error", `Failed to clear vector collection: ${error.message}`)
+			if (this.configManager.isFeatureConfigured) {
+				await this.vectorStore.deleteCollection()
+			} else {
+				console.warn("[CodeIndexOrchestrator] Service not configured, skipping vector collection clear.")
 			}
 
 			await this.cacheManager.clearCacheFile()
-
-			if (this.stateManager.state !== "Error") {
-				this.stateManager.setSystemState("Standby", "Index data cleared successfully.")
-			}
+			this.stateManager.setSystemState("Standby", "Index data cleared successfully.")
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error)
+			this._reportError("[CodeIndexOrchestrator] Failed to clear index data:", error, "clearIndexData")
+			this.stateManager.setSystemState("Error", `Failed to clear index data: ${message}`)
 		} finally {
-			this._isProcessing = false
+			this._isClearing = false
 		}
 	}
 
