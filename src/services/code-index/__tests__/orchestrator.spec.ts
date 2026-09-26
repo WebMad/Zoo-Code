@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest"
 import { CodeIndexOrchestrator } from "../orchestrator"
 import { TelemetryService } from "@roo-code/telemetry"
 import * as vscode from "vscode"
+import { CodeIndexStateManager } from "../state-manager"
 
 import { clearAllMocks } from "../../../test-utils/reset"
 
@@ -10,6 +11,11 @@ vi.mock("vscode", () => {
 	const path = require("path")
 	const testWorkspacePath = path.join(path.sep, "test", "workspace")
 	return {
+		EventEmitter: class {
+			event = vi.fn().mockReturnValue({ dispose: vi.fn() })
+			fire = vi.fn()
+			dispose = vi.fn()
+		},
 		window: {
 			activeTextEditor: null,
 		},
@@ -209,6 +215,51 @@ describe("CodeIndexOrchestrator - error path cleanup gating", () => {
 		},
 	)
 
+	it.each(["success", "batch error", "file error"])(
+		"preserves %s after trailing progress with the real state manager",
+		async (outcome) => {
+			const realState = new CodeIndexStateManager()
+			vectorStore.initialize.mockResolvedValue(false)
+			vectorStore.hasIndexedData.mockResolvedValue(true)
+			scanner.scanDirectory.mockResolvedValue({ stats: { processed: 0, skipped: 0 }, totalBlockCount: 0 })
+			const orchestrator = new CodeIndexOrchestrator(
+				configManager,
+				realState,
+				workspacePath,
+				cacheManager,
+				vectorStore,
+				scanner,
+				fileWatcher,
+			)
+			try {
+				await orchestrator.startIndexing()
+				const onProgress = fileWatcher.onBatchProgressUpdate.mock.calls[0][0]
+				const onFinished = fileWatcher.onDidFinishBatchProcessing.mock.calls[0][0]
+				onProgress({ processedInBatch: 0, totalInBatch: 1, currentFile: "/workspace/test.ts" })
+				expect(realState.getCurrentStatus()).toMatchObject({
+					systemStatus: "Indexing",
+					totalItems: 1,
+					currentItemUnit: "files",
+				})
+				onFinished({
+					processedFiles: [{ path: "test.ts", status: outcome === "file error" ? "error" : "success" }],
+					batchError: outcome === "batch error" ? new Error("batch failed") : undefined,
+				})
+				const terminalStatus = realState.getCurrentStatus()
+				expect(terminalStatus.systemStatus).toBe(outcome === "success" ? "Indexed" : "Error")
+				onProgress({ processedInBatch: 1, totalInBatch: 1 })
+				expect(realState.getCurrentStatus()).toEqual(terminalStatus)
+				onProgress({ processedInBatch: 0, totalInBatch: 0 })
+				expect(realState.getCurrentStatus()).toEqual(terminalStatus)
+				await orchestrator.startIndexing()
+				expect(scanner.scanDirectory).toHaveBeenCalledTimes(2)
+			} finally {
+				orchestrator.stopWatcher()
+				realState.dispose()
+			}
+		},
+	)
+
 	it("should handle watcher progress and completion through registered callbacks", async () => {
 		vectorStore.initialize.mockResolvedValue(false)
 		vectorStore.hasIndexedData.mockResolvedValue(false)
@@ -229,6 +280,8 @@ describe("CodeIndexOrchestrator - error path cleanup gating", () => {
 		onProgress({ processedInBatch: 1, totalInBatch: 2, currentFile: "/test/workspace/example.ts" })
 		expect(orchestrator.state).toBe("Indexing")
 		expect(stateManager.reportFileQueueProgress).toHaveBeenLastCalledWith(1, 2, "example.ts")
+		onProgress({ processedInBatch: 1, totalInBatch: 2 })
+		expect(stateManager.reportFileQueueProgress).toHaveBeenLastCalledWith(1, 2, undefined)
 		onProgress({ processedInBatch: 2, totalInBatch: 2 })
 		expect(orchestrator.state).toBe("Indexing")
 		onFinished({ processedFiles: [{ path: "example.ts", status: "success" }] })

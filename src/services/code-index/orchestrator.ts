@@ -71,7 +71,9 @@ export class CodeIndexOrchestrator {
 		totalInBatch: number
 		currentFile?: string
 	}): void {
-		if (processedInBatch < totalInBatch && this.stateManager.state !== "Indexing") {
+		// Reporting terminal progress would reset the batch's final state to Indexing.
+		if (processedInBatch >= totalInBatch) return
+		if (this.stateManager.state !== "Indexing") {
 			this.stateManager.setSystemState("Indexing", "Processing file changes...")
 		}
 		this.stateManager.reportFileQueueProgress(
