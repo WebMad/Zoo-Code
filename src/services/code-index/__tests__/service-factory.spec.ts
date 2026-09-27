@@ -108,8 +108,6 @@ describe("CodeIndexServiceFactory", () => {
 		const requiredSettings = [
 			["openai", "openAiOptions", "openAiNativeApiKey", "openAiConfigMissing"],
 			["ollama", "ollamaOptions", "ollamaBaseUrl", "ollamaConfigMissing"],
-			["openai-compatible", "openAiCompatibleOptions", "baseUrl", "openAiCompatibleConfigMissing"],
-			["openai-compatible", "openAiCompatibleOptions", "apiKey", "openAiCompatibleConfigMissing"],
 			["gemini", "geminiOptions", "apiKey", "geminiConfigMissing"],
 			["mistral", "mistralOptions", "apiKey", "mistralConfigMissing"],
 			["vercel-ai-gateway", "vercelAiGatewayOptions", "apiKey", "vercelAiGatewayConfigMissing"],
@@ -352,40 +350,36 @@ describe("CodeIndexServiceFactory", () => {
 			)
 		})
 
-		it("should throw error when OpenAI Compatible base URL is missing", () => {
+		it.each([undefined, ""])("rejects missing or empty OpenAI Compatible base URL: %s", (baseUrl) => {
 			// Arrange
 			const testConfig = {
 				embedderProvider: "openai-compatible",
 				modelId: "text-embedding-3-large",
 				openAiCompatibleOptions: {
-					baseUrl: undefined,
+					baseUrl,
 					apiKey: "test-api-key",
 				},
 			}
 			mockConfigManager.getConfig.mockReturnValue(testConfig as any)
 
 			// Act & Assert
-			expect(() => embedderFactory.create(mockConfigManager.getConfig())).toThrow(
-				"serviceFactory.openAiCompatibleConfigMissing",
-			)
+			expect(() => embedderFactory.create(mockConfigManager.getConfig())).toThrow("validation.baseUrlRequired")
 		})
 
-		it("should throw error when OpenAI Compatible API key is missing", () => {
+		it.each([undefined, ""])("rejects missing or empty OpenAI Compatible API key: %s", (apiKey) => {
 			// Arrange
 			const testConfig = {
 				embedderProvider: "openai-compatible",
 				modelId: "text-embedding-3-large",
 				openAiCompatibleOptions: {
 					baseUrl: "https://api.example.com/v1",
-					apiKey: undefined,
+					apiKey,
 				},
 			}
 			mockConfigManager.getConfig.mockReturnValue(testConfig as any)
 
 			// Act & Assert
-			expect(() => embedderFactory.create(mockConfigManager.getConfig())).toThrow(
-				"serviceFactory.openAiCompatibleConfigMissing",
-			)
+			expect(() => embedderFactory.create(mockConfigManager.getConfig())).toThrow("validation.apiKeyRequired")
 		})
 
 		it("should throw error when OpenAI Compatible options are missing", () => {
@@ -398,9 +392,7 @@ describe("CodeIndexServiceFactory", () => {
 			mockConfigManager.getConfig.mockReturnValue(testConfig as any)
 
 			// Act & Assert
-			expect(() => embedderFactory.create(mockConfigManager.getConfig())).toThrow(
-				"serviceFactory.openAiCompatibleConfigMissing",
-			)
+			expect(() => embedderFactory.create(mockConfigManager.getConfig())).toThrow("validation.baseUrlRequired")
 		})
 
 		it("should create GeminiEmbedder with default model when no modelId specified", () => {

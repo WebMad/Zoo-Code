@@ -1,5 +1,6 @@
 import { TelemetryService } from "@roo-code/telemetry"
 import { TelemetryEventName } from "@roo-code/types"
+import { t } from "../../../i18n"
 import type { IEmbedder } from "../interfaces"
 
 export class EmbedderValidationManager {
@@ -15,7 +16,7 @@ export class EmbedderValidationManager {
 
 			return {
 				valid: false,
-				error: error instanceof Error ? error.message : "embeddings:validation.configurationError",
+				error: error instanceof Error ? error.message : t("embeddings:validation.configurationError"),
 			}
 		}
 	}

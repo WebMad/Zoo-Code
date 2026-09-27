@@ -1,9 +1,12 @@
 import { TelemetryService } from "@roo-code/telemetry"
 import { TelemetryEventName } from "@roo-code/types"
+import { t } from "../../../../i18n"
+import embeddings from "../../../../i18n/locales/en/embeddings.json"
 import { OpenAiEmbedder } from "../openai"
 import { EmbedderValidationManager } from "../embedder-validation-manager"
 
 vi.mock("../openai")
+vi.mock("../../../../i18n", () => ({ t: vi.fn() }))
 vi.mock("@roo-code/telemetry", () => ({
 	TelemetryService: { instance: { captureEvent: vi.fn() } },
 }))
@@ -31,6 +34,7 @@ describe("EmbedderValidationManager", () => {
 		vi.mocked(embedder.validateConfiguration).mockRejectedValue(error)
 
 		expect(await manager.validateEmbedder(embedder)).toEqual({ valid: false, error: error.message })
+		expect(t).not.toHaveBeenCalled()
 		expect(TelemetryService.instance.captureEvent).toHaveBeenCalledExactlyOnceWith(
 			TelemetryEventName.CODE_INDEX_ERROR,
 			{ error: error.message, stack: error.stack, location: "validateEmbedder" },
@@ -40,11 +44,13 @@ describe("EmbedderValidationManager", () => {
 	it.each(["unavailable", null, undefined])("handles non-Error rejection %s", async (error) => {
 		const embedder = new OpenAiEmbedder({ openAiNativeApiKey: "test-key" })
 		vi.mocked(embedder.validateConfiguration).mockRejectedValue(error)
+		vi.mocked(t).mockReturnValue(embeddings.validation.configurationError)
 
 		expect(await manager.validateEmbedder(embedder)).toEqual({
 			valid: false,
-			error: "embeddings:validation.configurationError",
+			error: embeddings.validation.configurationError,
 		})
+		expect(t).toHaveBeenCalledExactlyOnceWith("embeddings:validation.configurationError")
 		expect(TelemetryService.instance.captureEvent).toHaveBeenCalledExactlyOnceWith(
 			TelemetryEventName.CODE_INDEX_ERROR,
 			{ error: String(error), stack: undefined, location: "validateEmbedder" },
