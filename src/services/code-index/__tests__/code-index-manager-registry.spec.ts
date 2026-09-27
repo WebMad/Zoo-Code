@@ -108,6 +108,22 @@ describe("CodeIndexManagerRegistry", () => {
 		expect(CodeIndexManagerRegistry.getAllInstances()).toEqual([a, b])
 	})
 
+	it("does not cache a scope when manager construction fails and permits retry for the same path", () => {
+		const error = new Error("construction failed")
+		vi.mocked(CodeIndexManager).mockImplementationOnce(function () {
+			throw error
+		})
+
+		expect(() => CodeIndexManagerRegistry.getOrCreate(context, "/first")).toThrow(error)
+		expect(CodeIndexManagerRegistry.getAllInstances()).toEqual([])
+
+		const manager = CodeIndexManagerRegistry.getOrCreate(context, "/first")
+		expect(manager).toBe(vi.mocked(CodeIndexManager).mock.results[1].value)
+		expect(CodeIndexManagerRegistry.getAllInstances()).toEqual([manager])
+		expect(CodeIndexManagerRegistry.getOrCreate(context, "/first")).toBe(manager)
+		expect(CodeIndexManager).toHaveBeenCalledTimes(2)
+	})
+
 	it("returns a snapshot that cannot mutate the cache", () => {
 		expect(CodeIndexManagerRegistry.getAllInstances()).toEqual([])
 		const manager = CodeIndexManagerRegistry.getOrCreate(context)
