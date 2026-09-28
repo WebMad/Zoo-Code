@@ -3,7 +3,7 @@
 import * as vscode from "vscode"
 
 import { FileWatcher } from "../file-watcher"
-import * as filePreparation from "../file-preparation"
+import { FilePreparation } from "../file-preparation"
 
 import { clearAllMocks } from "../../../../test-utils/reset"
 
@@ -183,17 +183,27 @@ describe("FileWatcher", () => {
 		vi.useRealTimers()
 	})
 
-	it("delegates public processFile to preparation without writing points or cache", async () => {
-		const prepare = vi.spyOn(filePreparation, "prepareFile")
+	it("reuses constructor-created preparation for public processFile without writing points or cache", async () => {
+		const prepare = vi.spyOn(FilePreparation.prototype, "prepareFile")
 		try {
+			const preparation = fileWatcher["filePreparation"]
+			expect(preparation).toBeInstanceOf(FilePreparation)
 			const path = "/mock/workspace/src/file.ts"
 			const result = await fileWatcher.processFile(path)
-			expect(prepare).toHaveBeenCalledWith(path, expect.objectContaining({ workspacePath: "/mock/workspace" }))
+			expect(prepare).toHaveBeenNthCalledWith(1, path)
 			expect(result).toBe(await prepare.mock.results[0].value)
 			expect(result.status).toBe("processed_for_batching")
 			expect(result.pointsToUpsert).toHaveLength(1)
 			expect(vscode.workspace.fs.stat).toHaveBeenCalledWith(vscode.Uri.file(path))
 			expect(vscode.workspace.fs.readFile).toHaveBeenCalledWith(vscode.Uri.file(path))
+			const secondPath = "/mock/workspace/src/second.ts"
+			const secondResult = await fileWatcher.processFile(secondPath)
+			expect(prepare).toHaveBeenCalledTimes(2)
+			expect(prepare).toHaveBeenNthCalledWith(2, secondPath)
+			expect(prepare.mock.contexts[0]).toBe(preparation)
+			expect(prepare.mock.contexts[1]).toBe(preparation)
+			expect(secondResult).toBe(await prepare.mock.results[1].value)
+			expect(secondResult.status).toBe("processed_for_batching")
 			expect(mockVectorStore.upsertPoints).not.toHaveBeenCalled()
 			expect(mockCacheManager.updateHash).not.toHaveBeenCalled()
 			expect(mockCacheManager.deleteHash).not.toHaveBeenCalled()

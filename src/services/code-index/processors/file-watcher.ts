@@ -12,7 +12,7 @@ import {
 	BatchProcessingSummary,
 } from "../interfaces"
 import { codeParser } from "./parser"
-import { prepareFile } from "./file-preparation"
+import { FilePreparation } from "./file-preparation"
 import { CacheManager } from "../cache-manager"
 import { TelemetryService } from "@roo-code/telemetry"
 import { TelemetryEventName } from "@roo-code/types"
@@ -23,6 +23,7 @@ import { Package } from "../../../shared/package"
  * Implementation of the file watcher interface
  */
 export class FileWatcher implements IFileWatcher {
+	private readonly filePreparation: FilePreparation
 	private ignoreInstance?: Ignore
 	private fileWatcher?: vscode.FileSystemWatcher
 	private ignoreController: RooIgnoreController
@@ -77,6 +78,16 @@ export class FileWatcher implements IFileWatcher {
 		if (ignoreInstance) {
 			this.ignoreInstance = ignoreInstance
 		}
+		this.filePreparation = new FilePreparation({
+			workspacePath: this.workspacePath,
+			validateAccess: (path) => this.ignoreController.validateAccess(path),
+			ignoreInstance: this.ignoreInstance,
+			stat: (path) => vscode.workspace.fs.stat(vscode.Uri.file(path)),
+			readFile: (path) => vscode.workspace.fs.readFile(vscode.Uri.file(path)),
+			getHash: (path) => this.cacheManager.getHash(path),
+			parser: codeParser,
+			embedder: this.embedder,
+		})
 		// Get the configurable batch size from VSCode settings, fallback to default
 		// If not provided in constructor, try to get from VSCode settings
 		if (batchSegmentThreshold !== undefined) {
@@ -498,15 +509,6 @@ export class FileWatcher implements IFileWatcher {
 	 * @returns Promise resolving to processing result
 	 */
 	async processFile(filePath: string): Promise<FileProcessingResult> {
-		return prepareFile(filePath, {
-			workspacePath: this.workspacePath,
-			validateAccess: (path) => this.ignoreController.validateAccess(path),
-			ignoreInstance: this.ignoreInstance,
-			stat: (path) => vscode.workspace.fs.stat(vscode.Uri.file(path)),
-			readFile: (path) => vscode.workspace.fs.readFile(vscode.Uri.file(path)),
-			getHash: (path) => this.cacheManager.getHash(path),
-			parser: codeParser,
-			embedder: this.embedder,
-		})
+		return this.filePreparation.prepareFile(filePath)
 	}
 }

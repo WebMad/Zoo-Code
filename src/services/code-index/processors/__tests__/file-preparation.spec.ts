@@ -2,9 +2,9 @@ import { createHash } from "crypto"
 import { v5 as uuidv5 } from "uuid"
 import type { CodeBlock, ICodeParser, IEmbedder } from "../../interfaces"
 import { MAX_FILE_SIZE_BYTES, QDRANT_CODE_BLOCK_NAMESPACE } from "../../constants"
-import { prepareFile, type FilePreparationDependencies } from "../file-preparation"
+import { FilePreparation, type FilePreparationDependencies } from "../file-preparation"
 
-describe("prepareFile", () => {
+describe("FilePreparation", () => {
 	const filePath = "/workspace/src/file.ts"
 	const content = "test content"
 	const hash = createHash("sha256").update(content).digest("hex")
@@ -41,7 +41,7 @@ describe("prepareFile", () => {
 		async (relativePath) => {
 			const dependencies = setup()
 			const path = `/workspace/${relativePath}`
-			expect(await prepareFile(path, dependencies)).toEqual({
+			expect(await new FilePreparation(dependencies).prepareFile(path)).toEqual({
 				path,
 				status: "skipped",
 				reason: "File is in an ignored directory",
@@ -55,7 +55,7 @@ describe("prepareFile", () => {
 		const dependencies = setup()
 		dependencies.validateAccess.mockReturnValue(source !== "access")
 		dependencies.ignoreInstance.ignores.mockReturnValue(source === "gitignore")
-		expect(await prepareFile(filePath, dependencies)).toEqual({
+		expect(await new FilePreparation(dependencies).prepareFile(filePath)).toEqual({
 			path: filePath,
 			status: "skipped",
 			reason: "File is ignored by .rooignore or .gitignore",
@@ -72,7 +72,7 @@ describe("prepareFile", () => {
 	it("skips oversized files without reading them", async () => {
 		const dependencies = setup()
 		dependencies.stat.mockResolvedValue({ size: MAX_FILE_SIZE_BYTES + 1 })
-		expect(await prepareFile(filePath, dependencies)).toEqual({
+		expect(await new FilePreparation(dependencies).prepareFile(filePath)).toEqual({
 			path: filePath,
 			status: "skipped",
 			reason: "File is too large",
@@ -83,7 +83,7 @@ describe("prepareFile", () => {
 	it("skips unchanged content before parsing or embedding", async () => {
 		const dependencies = setup()
 		dependencies.getHash.mockReturnValue(hash)
-		expect(await prepareFile(filePath, dependencies)).toEqual({
+		expect(await new FilePreparation(dependencies).prepareFile(filePath)).toEqual({
 			path: filePath,
 			status: "skipped",
 			reason: "File has not changed",
@@ -96,7 +96,7 @@ describe("prepareFile", () => {
 	it("returns the hash and empty points when parsing produces no blocks", async () => {
 		const dependencies = setup()
 		dependencies.parser.parseFile.mockResolvedValue([])
-		expect(await prepareFile(filePath, dependencies)).toEqual({
+		expect(await new FilePreparation(dependencies).prepareFile(filePath)).toEqual({
 			path: filePath,
 			status: "processed_for_batching",
 			newHash: hash,
@@ -108,7 +108,9 @@ describe("prepareFile", () => {
 	it("still parses and returns the hash without an embedder or gitignore", async () => {
 		const dependencies = setup()
 		expect(
-			await prepareFile(filePath, { ...dependencies, embedder: undefined, ignoreInstance: undefined }),
+			await new FilePreparation({ ...dependencies, embedder: undefined, ignoreInstance: undefined }).prepareFile(
+				filePath,
+			),
 		).toEqual({
 			path: filePath,
 			status: "processed_for_batching",
@@ -131,7 +133,7 @@ describe("prepareFile", () => {
 				[0.3, 0.4],
 			],
 		})
-		expect(await prepareFile(filePath, dependencies)).toEqual({
+		expect(await new FilePreparation(dependencies).prepareFile(filePath)).toEqual({
 			path: filePath,
 			status: "processed_for_batching",
 			newHash: hash,
@@ -157,7 +159,7 @@ describe("prepareFile", () => {
 	it("does not treat a hidden workspace ancestor as an excluded directory", async () => {
 		const dependencies = setup()
 		dependencies.workspacePath = "/.hidden/workspace"
-		expect((await prepareFile("/.hidden/workspace/src/file.ts", dependencies)).status).toBe(
+		expect((await new FilePreparation(dependencies).prepareFile("/.hidden/workspace/src/file.ts")).status).toBe(
 			"processed_for_batching",
 		)
 		expect(dependencies.ignoreInstance.ignores).toHaveBeenCalledWith("src/file.ts")
@@ -166,7 +168,7 @@ describe("prepareFile", () => {
 	it("preserves Uint8Array toString content conversion", async () => {
 		const dependencies = setup()
 		dependencies.readFile.mockResolvedValue(new Uint8Array([65, 66]))
-		await prepareFile(filePath, dependencies)
+		await new FilePreparation(dependencies).prepareFile(filePath)
 		expect(dependencies.parser.parseFile).toHaveBeenCalledWith(filePath, {
 			content: "65,66",
 			fileHash: createHash("sha256").update("65,66").digest("hex"),
@@ -188,7 +190,7 @@ describe("prepareFile", () => {
 			if (stage === "cache") dependencies.getHash.mockImplementation(fail)
 			if (stage === "parse") dependencies.parser.parseFile.mockRejectedValue(error)
 			if (stage === "embed") dependencies.embedder.createEmbeddings.mockRejectedValue(error)
-			const result = await prepareFile(filePath, dependencies)
+			const result = await new FilePreparation(dependencies).prepareFile(filePath)
 			expect(result).toEqual({ path: filePath, status: "local_error", error })
 			expect(result.error).toBe(error)
 		},
@@ -197,7 +199,7 @@ describe("prepareFile", () => {
 	it("does not wrap non-Error rejections", async () => {
 		const dependencies = setup()
 		dependencies.readFile.mockRejectedValue("read failed")
-		expect(await prepareFile(filePath, dependencies)).toEqual({
+		expect(await new FilePreparation(dependencies).prepareFile(filePath)).toEqual({
 			path: filePath,
 			status: "local_error",
 			error: "read failed",
