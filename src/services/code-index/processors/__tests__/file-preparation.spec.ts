@@ -76,7 +76,12 @@ describe.each(["posix", "win32"] as const)("FilePreparation (%s paths)", (platfo
 				reason: "File is in an ignored directory",
 			})
 			expect(dependencies.ignoreController.validateAccess).not.toHaveBeenCalled()
+			expect(dependencies.ignoreInstance.ignores).not.toHaveBeenCalled()
 			expect(dependencies.fileSystem.stat).not.toHaveBeenCalled()
+			expect(dependencies.fileSystem.readFile).not.toHaveBeenCalled()
+			expect(dependencies.cacheManager.getHash).not.toHaveBeenCalled()
+			expect(dependencies.parser.parseFile).not.toHaveBeenCalled()
+			expect(dependencies.embedder.createEmbeddings).not.toHaveBeenCalled()
 		},
 	)
 
@@ -96,6 +101,10 @@ describe.each(["posix", "win32"] as const)("FilePreparation (%s paths)", (platfo
 			expect(dependencies.ignoreInstance.ignores).toHaveBeenCalledWith(relativeFilePath)
 		}
 		expect(dependencies.fileSystem.stat).not.toHaveBeenCalled()
+		expect(dependencies.fileSystem.readFile).not.toHaveBeenCalled()
+		expect(dependencies.cacheManager.getHash).not.toHaveBeenCalled()
+		expect(dependencies.parser.parseFile).not.toHaveBeenCalled()
+		expect(dependencies.embedder.createEmbeddings).not.toHaveBeenCalled()
 	})
 
 	it("skips oversized files without reading them", async () => {
@@ -112,6 +121,9 @@ describe.each(["posix", "win32"] as const)("FilePreparation (%s paths)", (platfo
 			reason: "File is too large",
 		})
 		expect(dependencies.fileSystem.readFile).not.toHaveBeenCalled()
+		expect(dependencies.cacheManager.getHash).not.toHaveBeenCalled()
+		expect(dependencies.parser.parseFile).not.toHaveBeenCalled()
+		expect(dependencies.embedder.createEmbeddings).not.toHaveBeenCalled()
 	})
 
 	it("skips unchanged content before parsing or embedding", async () => {
@@ -199,9 +211,12 @@ describe.each(["posix", "win32"] as const)("FilePreparation (%s paths)", (platfo
 		const dependencies = setup()
 		expect((await new FilePreparation(dependencies).prepareFile(filePath)).status).toBe("processed_for_batching")
 		expect(dependencies.ignoreController.validateAccess.mock.contexts).toEqual([dependencies.ignoreController])
+		expect(dependencies.ignoreInstance.ignores.mock.contexts).toEqual([dependencies.ignoreInstance])
 		expect(dependencies.fileSystem.stat.mock.contexts).toEqual([dependencies.fileSystem])
 		expect(dependencies.fileSystem.readFile.mock.contexts).toEqual([dependencies.fileSystem])
 		expect(dependencies.cacheManager.getHash.mock.contexts).toEqual([dependencies.cacheManager])
+		expect(dependencies.parser.parseFile.mock.contexts).toEqual([dependencies.parser])
+		expect(dependencies.embedder.createEmbeddings.mock.contexts).toEqual([dependencies.embedder])
 	})
 
 	it("does not treat a hidden workspace ancestor as an excluded directory", async () => {
