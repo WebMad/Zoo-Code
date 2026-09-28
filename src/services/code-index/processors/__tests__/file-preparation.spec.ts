@@ -228,13 +228,62 @@ describe.each(["posix", "win32"] as const)("FilePreparation (%s paths)", (platfo
 		expect(dependencies.ignoreInstance.ignores).toHaveBeenCalledWith(relativeFilePath)
 	})
 
-	it("preserves Uint8Array toString content conversion", async () => {
-		const dependencies = setup()
-		dependencies.fileSystem.readFile.mockResolvedValue(new Uint8Array([65, 66]))
-		await new FilePreparation(dependencies).prepareFile(filePath)
-		expect(dependencies.parser.parseFile).toHaveBeenCalledWith(filePath, {
-			content: "65,66",
-			fileHash: createHash("sha256").update("65,66").digest("hex"),
+	describe.each(["Buffer", "Uint8Array"] as const)("UTF-8 decoding from %s", (representation) => {
+		it.each([
+			{ name: "ASCII", bytes: [65, 66], expectedContent: "AB" },
+			{
+				name: "Cyrillic, Spanish, CJK and emoji",
+				bytes: [...Buffer.from("Привет, español 中文 😀", "utf-8")],
+				expectedContent: "Привет, español 中文 😀",
+			},
+			{ name: "preserved BOM", bytes: [0xef, 0xbb, 0xbf, 65, 66], expectedContent: "\uFEFFAB" },
+			{ name: "empty content", bytes: [], expectedContent: "" },
+			{
+				name: "invalid and truncated UTF-8 sequences",
+				bytes: [65, 0xc3, 0x28, 0xff, 0xe2, 0x82],
+				expectedContent: "A\uFFFD(\uFFFD\uFFFD",
+			},
+			{
+				name: "sliced view with nonzero byteOffset",
+				bytes: [0x58, 65, 0xc3, 0xb1, 0x59],
+				expectedContent: "Añ",
+				sliced: true,
+			},
+		])("decodes and hashes $name, then skips the cached content", async ({ bytes, expectedContent, sliced }) => {
+			const dependencies = setup()
+			const backing = representation === "Buffer" ? Buffer.from(bytes) : new Uint8Array(bytes)
+			const fileContent = sliced ? backing.subarray(1, backing.length - 1) : backing
+			if (sliced) {
+				expect(fileContent.byteOffset).toBeGreaterThan(0)
+				expect(fileContent.byteLength).toBeLessThan(backing.byteLength)
+			}
+			dependencies.fileSystem.readFile.mockResolvedValue(fileContent)
+			dependencies.parser.parseFile.mockResolvedValue([])
+			// Hash the literal expected text, not the input bytes or the production decoder's output.
+			const expectedHash = createHash("sha256").update(expectedContent).digest("hex")
+			const preparation = new FilePreparation(dependencies)
+
+			expect(await preparation.prepareFile(filePath)).toEqual({
+				path: filePath,
+				status: "processed_for_batching",
+				newHash: expectedHash,
+				pointsToUpsert: [],
+			})
+			expect(dependencies.parser.parseFile).toHaveBeenCalledWith(filePath, {
+				content: expectedContent,
+				fileHash: expectedHash,
+			})
+
+			dependencies.parser.parseFile.mockClear()
+			dependencies.cacheManager.getHash.mockReturnValue(expectedHash)
+			expect(await preparation.prepareFile(filePath)).toEqual({
+				path: filePath,
+				status: "skipped",
+				reason: "File has not changed",
+			})
+			expect(dependencies.cacheManager.getHash).toHaveBeenCalledWith(filePath)
+			expect(dependencies.parser.parseFile).not.toHaveBeenCalled()
+			expect(dependencies.embedder.createEmbeddings).not.toHaveBeenCalled()
 		})
 	})
 

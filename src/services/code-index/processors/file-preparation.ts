@@ -20,7 +20,7 @@ export class FilePreparation {
 			}
 
 			const fileContent = await dependencies.fileSystem.readFile(Uri.file(filePath))
-			const content = fileContent.toString()
+			const content = Buffer.from(fileContent).toString("utf-8")
 			const newHash = createHash("sha256").update(content).digest("hex")
 
 			if (dependencies.cacheManager.getHash(filePath) === newHash) {
