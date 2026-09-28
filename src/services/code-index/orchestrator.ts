@@ -26,10 +26,10 @@ export class CodeIndexOrchestrator {
 		private readonly cacheManager: CacheManager,
 		private readonly vectorStore: IVectorStore,
 		scanner: DirectoryScanner,
-		fileWatcher: IFileWatcher,
+		createWatcher: () => IFileWatcher,
 	) {
 		this.scanExecutor = new CodeIndexScanExecutor(workspacePath, scanner, vectorStore, stateManager)
-		this.watcherSession = new WatcherSession(fileWatcher, stateManager)
+		this.watcherSession = new WatcherSession(createWatcher, stateManager)
 	}
 
 	/**

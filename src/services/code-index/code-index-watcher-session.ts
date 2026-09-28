@@ -4,6 +4,7 @@ import type { BatchProcessingSummary, IFileWatcher } from "./interfaces"
 import type { CodeIndexStateManager } from "./state-manager"
 
 interface Session {
+	watcher: IFileWatcher
 	stopped: boolean
 	subscriptions: Disposable[]
 	ready: Promise<void>
@@ -12,10 +13,9 @@ interface Session {
 /** Owns watcher startup and subscriptions; only batch summaries publish final outcomes. */
 export class WatcherSession {
 	private session?: Session
-	private stopped = false
 
 	constructor(
-		private readonly watcher: IFileWatcher,
+		private readonly createWatcher: () => IFileWatcher,
 		private readonly stateManager: Pick<
 			CodeIndexStateManager,
 			"state" | "setSystemState" | "reportFileQueueProgress"
@@ -23,25 +23,26 @@ export class WatcherSession {
 	) {}
 
 	start(): Promise<void> {
-		// A disposed watcher owns disposed event emitters and cannot be restarted.
-		if (this.stopped || this.session?.stopped)
-			return Promise.reject(new DOMException("Watcher session stopped", "AbortError"))
 		if (this.session) return this.session.ready
 
-		const session: Session = { stopped: false, subscriptions: [], ready: Promise.resolve() }
+		const session: Session = {
+			watcher: this.createWatcher(),
+			stopped: false,
+			subscriptions: [],
+			ready: Promise.resolve(),
+		}
 		this.session = session
 		session.ready = this.initialize(session)
 		return session.ready
 	}
 
 	stop(): void {
-		if (this.stopped || this.session?.stopped) return
-		this.stopped = true
-		if (this.session) {
-			this.session.stopped = true
-			this.disposeSubscriptions(this.session)
-		}
-		this.watcher.dispose()
+		const session = this.session
+		if (!session) return
+		this.session = undefined
+		session.stopped = true
+		this.disposeSubscriptions(session)
+		session.watcher.dispose()
 	}
 
 	private disposeSubscriptions(session: Session): void {
@@ -50,25 +51,31 @@ export class WatcherSession {
 
 	private async initialize(session: Session): Promise<void> {
 		try {
-			await this.watcher.initialize()
+			await session.watcher.initialize()
 			if (session.stopped) throw new DOMException("Watcher startup stopped", "AbortError")
 
 			this.subscribeToWatcher(session)
 		} catch (error) {
+			if (this.session === session) this.session = undefined
 			session.stopped = true
 			this.disposeSubscriptions(session)
 			// Initialization may have allocated resources after stop() disposed the watcher.
-			this.watcher.dispose()
+			session.watcher.dispose()
 			throw error
 		}
 	}
 
 	private subscribeToWatcher(session: Session): void {
-		this.subscribe(session, this.watcher.onDidStartBatchProcessing, (files) => this.handleBatchStarted(files))
-		this.subscribe(session, this.watcher.onBatchProgressUpdate, ({ processedInBatch, totalInBatch, currentFile }) =>
-			this.handleBatchProgress(processedInBatch, totalInBatch, currentFile),
+		this.subscribe(session, session.watcher.onDidStartBatchProcessing, (files) => this.handleBatchStarted(files))
+		this.subscribe(
+			session,
+			session.watcher.onBatchProgressUpdate,
+			({ processedInBatch, totalInBatch, currentFile }) =>
+				this.handleBatchProgress(processedInBatch, totalInBatch, currentFile),
 		)
-		this.subscribe(session, this.watcher.onDidFinishBatchProcessing, (summary) => this.handleBatchFinished(summary))
+		this.subscribe(session, session.watcher.onDidFinishBatchProcessing, (summary) =>
+			this.handleBatchFinished(summary),
+		)
 	}
 
 	private subscribe<T>(session: Session, event: Event<T>, handler: (value: T) => void): void {

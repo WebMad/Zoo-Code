@@ -133,7 +133,7 @@ describe("CodeIndexOrchestrator - error path cleanup gating", () => {
 				cacheManager,
 				vectorStore,
 				scanner,
-				fileWatcher,
+				() => fileWatcher,
 			)
 			await orchestrator.startIndexing()
 			expect(events).toEqual(["incomplete", "scan", "watcher", "complete"])
@@ -155,7 +155,7 @@ describe("CodeIndexOrchestrator - error path cleanup gating", () => {
 				cacheManager,
 				vectorStore,
 				scanner,
-				fileWatcher,
+				() => fileWatcher,
 			)
 			scanner.scanDirectory.mockImplementation(async () => {
 				orchestrator.stopIndexing()
@@ -184,7 +184,7 @@ describe("CodeIndexOrchestrator - error path cleanup gating", () => {
 			cacheManager,
 			vectorStore,
 			scanner,
-			fileWatcher,
+			() => fileWatcher,
 		)
 
 		// Act
@@ -213,7 +213,7 @@ describe("CodeIndexOrchestrator - error path cleanup gating", () => {
 			cacheManager,
 			vectorStore,
 			scanner,
-			fileWatcher,
+			() => fileWatcher,
 		)
 
 		// Act
@@ -249,7 +249,7 @@ describe("CodeIndexOrchestrator - error path cleanup gating", () => {
 			cacheManager,
 			vectorStore,
 			scanner,
-			fileWatcher,
+			() => fileWatcher,
 		)
 
 		await orchestrator.startIndexing()
@@ -279,7 +279,7 @@ describe("CodeIndexOrchestrator - error path cleanup gating", () => {
 			cacheManager,
 			vectorStore,
 			scanner,
-			fileWatcher,
+			() => fileWatcher,
 		)
 
 		await orchestrator.startIndexing()
@@ -346,6 +346,45 @@ describe("CodeIndexOrchestrator - stopIndexing", () => {
 		}
 	})
 
+	it.each(["stop", "clear", "error"])("restarts the same orchestrator after %s", async (reason) => {
+		const createWatcher = vi.fn(() => ({
+			initialize: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+			dispose: vi.fn(),
+			processFile: vi.fn(),
+			onDidStartBatchProcessing: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+			onBatchProgressUpdate: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+			onDidFinishBatchProcessing: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+		}))
+		scanner.scanDirectory.mockResolvedValue({ stats: { processed: 0, skipped: 0 }, totalBlockCount: 0 })
+		vectorStore.deleteCollection = vi.fn().mockResolvedValue(undefined)
+		const orchestrator = new CodeIndexOrchestrator(
+			configManager,
+			stateManager,
+			workspacePath,
+			cacheManager,
+			vectorStore,
+			scanner,
+			createWatcher,
+		)
+		if (reason === "error") vectorStore.initialize.mockRejectedValueOnce(new Error("Qdrant unavailable"))
+		await orchestrator.startIndexing()
+		if (reason === "error") {
+			expect(orchestrator.state).toBe("Error")
+			expect(createWatcher).not.toHaveBeenCalled()
+		} else {
+			expect(orchestrator.state).toBe("Indexed")
+			if (reason === "clear") await orchestrator.clearIndexData()
+			else orchestrator.stopIndexing()
+			expect(createWatcher.mock.results[0].value.dispose).toHaveBeenCalledTimes(1)
+		}
+		await orchestrator.startIndexing()
+		expect(orchestrator.state).toBe("Indexed")
+		expect(createWatcher).toHaveBeenCalledTimes(reason === "error" ? 1 : 2)
+		for (const { value: watcher } of createWatcher.mock.results) {
+			expect(watcher.initialize).toHaveBeenCalledTimes(1)
+		}
+	})
+
 	it("does not publish Indexed when stopped during watcher initialization", async () => {
 		let finishInitialization!: () => void
 		let enteredInitialization!: () => void
@@ -366,7 +405,7 @@ describe("CodeIndexOrchestrator - stopIndexing", () => {
 			cacheManager,
 			vectorStore,
 			scanner,
-			fileWatcher,
+			() => fileWatcher,
 		)
 		const indexing = orchestrator.startIndexing()
 		await entered
@@ -402,7 +441,7 @@ describe("CodeIndexOrchestrator - stopIndexing", () => {
 			cacheManager,
 			vectorStore,
 			scanner,
-			fileWatcher,
+			() => fileWatcher,
 		)
 
 		// Start indexing (async, don't await)
@@ -445,7 +484,7 @@ describe("CodeIndexOrchestrator - stopIndexing", () => {
 			cacheManager,
 			vectorStore,
 			scanner,
-			fileWatcher,
+			() => fileWatcher,
 		)
 
 		const indexingPromise = orchestrator.startIndexing()
@@ -483,7 +522,7 @@ describe("CodeIndexOrchestrator - stopIndexing", () => {
 			cacheManager,
 			vectorStore,
 			scanner,
-			fileWatcher,
+			() => fileWatcher,
 		)
 
 		const indexingPromise = orchestrator.startIndexing()

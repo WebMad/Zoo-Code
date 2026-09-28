@@ -304,13 +304,13 @@ describe("CodeIndexManager - handleSettingsChange regression", () => {
 					embedder: { embedderInfo: { name: "openai" } },
 					vectorStore: {},
 					scanner: {},
-					fileWatcher: {
+					createWatcher: () => ({
 						onDidStartBatchProcessing: vi.fn(),
 						onBatchProgressUpdate: vi.fn(),
 						watch: vi.fn(),
 						stopWatcher: vi.fn(),
 						dispose: vi.fn(),
-					},
+					}),
 				}),
 				validateEmbedder: vi.fn().mockResolvedValue({ valid: true }),
 			}
@@ -380,13 +380,13 @@ describe("CodeIndexManager - handleSettingsChange regression", () => {
 					embedder: { embedderInfo: { name: "openai" } },
 					vectorStore: {},
 					scanner: {},
-					fileWatcher: {
+					createWatcher: () => ({
 						onDidStartBatchProcessing: vi.fn(),
 						onBatchProgressUpdate: vi.fn(),
 						watch: vi.fn(),
 						stopWatcher: vi.fn(),
 						dispose: vi.fn(),
-					},
+					}),
 				}),
 				validateEmbedder: vi.fn().mockResolvedValue({ valid: true }),
 			}
@@ -442,7 +442,7 @@ describe("CodeIndexManager - handleSettingsChange regression", () => {
 					embedder: mockEmbedder,
 					vectorStore: mockVectorStore,
 					scanner: mockScanner,
-					fileWatcher: mockFileWatcher,
+					createWatcher: () => mockFileWatcher,
 				}),
 				validateEmbedder: vi.fn(),
 			}
@@ -637,13 +637,13 @@ describe("CodeIndexManager - handleSettingsChange regression", () => {
 					embedder: { embedderInfo: { name: "openai" } },
 					vectorStore: {},
 					scanner: {},
-					fileWatcher: {
+					createWatcher: () => ({
 						onDidStartBatchProcessing: vi.fn(),
 						onBatchProgressUpdate: vi.fn(),
 						watch: vi.fn(),
 						stopWatcher: vi.fn(),
 						dispose: vi.fn(),
-					},
+					}),
 				}),
 				validateEmbedder: vi.fn().mockResolvedValue({ valid: true }),
 			}
