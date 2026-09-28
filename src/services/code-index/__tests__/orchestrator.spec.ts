@@ -346,6 +346,39 @@ describe("CodeIndexOrchestrator - stopIndexing", () => {
 		}
 	})
 
+	it("does not publish Indexed when stopped during watcher initialization", async () => {
+		let finishInitialization!: () => void
+		let enteredInitialization!: () => void
+		const entered = new Promise<void>((resolve) => {
+			enteredInitialization = resolve
+		})
+		fileWatcher.initialize.mockImplementation(() => {
+			enteredInitialization()
+			return new Promise<void>((resolve) => {
+				finishInitialization = resolve
+			})
+		})
+		scanner.scanDirectory.mockResolvedValue({ stats: { processed: 0, skipped: 0 }, totalBlockCount: 0 })
+		const orchestrator = new CodeIndexOrchestrator(
+			configManager,
+			stateManager,
+			workspacePath,
+			cacheManager,
+			vectorStore,
+			scanner,
+			fileWatcher,
+		)
+		const indexing = orchestrator.startIndexing()
+		await entered
+		orchestrator.stopIndexing()
+		finishInitialization()
+		await indexing
+		expect(stateManager.state).toBe("Standby")
+		expect(stateManager.setSystemState).not.toHaveBeenCalledWith("Indexed", expect.anything())
+		expect(fileWatcher.onDidStartBatchProcessing).not.toHaveBeenCalled()
+		expect(vectorStore.markIndexingComplete).not.toHaveBeenCalled()
+	})
+
 	it("should abort indexing when stopIndexing() is called", async () => {
 		// Make scanner hang until aborted
 		scanner.scanDirectory.mockImplementation(
