@@ -155,6 +155,16 @@ describe("WatcherSession", () => {
 	})
 
 	describe("real state manager integration", () => {
+		it("preserves the current outcome when an empty batch starts", async () => {
+			const { session, start, finish, state } = setup()
+			await session.start()
+			finish.fire({ processedFiles: [], batchError: new Error("database unavailable") })
+			const outcome = state.getCurrentStatus()
+			expect(outcome.systemStatus).toBe("Error")
+			start.fire([])
+			expect(state.getCurrentStatus()).toEqual(outcome)
+		})
+
 		it.each(["success", "skipped", "error", "local_error"] as const)(
 			"preserves the %s outcome through terminal and empty progress",
 			async (status) => {
