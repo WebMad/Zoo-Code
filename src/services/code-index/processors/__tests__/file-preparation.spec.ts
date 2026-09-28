@@ -1,12 +1,29 @@
 import { createHash } from "crypto"
+import path from "path"
 import { v5 as uuidv5 } from "uuid"
 import type { CodeBlock, ICodeParser, IEmbedder } from "../../interfaces"
 import { MAX_FILE_SIZE_BYTES, QDRANT_CODE_BLOCK_NAMESPACE } from "../../constants"
 import { FilePreparation } from "../file-preparation"
 import type { FilePreparationDependencies } from "../file-preparation-dependencies"
 
-describe("FilePreparation", () => {
+// Keep path spies local to the modules under test, not Node or the test runner.
+vi.mock("path", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("path")>()
+	return { ...actual, default: { ...actual } }
+})
+
+describe.each(["posix", "win32"] as const)("FilePreparation (%s paths)", (platform) => {
+	beforeEach(() => {
+		vi.spyOn(path, "resolve").mockImplementation(path[platform].resolve)
+		vi.spyOn(path, "relative").mockImplementation(path[platform].relative)
+		vi.spyOn(path, "normalize").mockImplementation(path[platform].normalize)
+	})
+
+	afterEach(() => vi.restoreAllMocks())
+
 	const filePath = "/workspace/src/file.ts"
+	const relativeFilePath = path[platform].join("src", "file.ts")
+	const normalizedFilePath = path[platform].resolve(filePath)
 	const content = "test content"
 	const hash = createHash("sha256").update(content).digest("hex")
 	const block: CodeBlock = {
@@ -65,7 +82,7 @@ describe("FilePreparation", () => {
 		if (source === "access") {
 			expect(dependencies.ignoreInstance.ignores).not.toHaveBeenCalled()
 		} else {
-			expect(dependencies.ignoreInstance.ignores).toHaveBeenCalledWith("src/file.ts")
+			expect(dependencies.ignoreInstance.ignores).toHaveBeenCalledWith(relativeFilePath)
 		}
 		expect(dependencies.stat).not.toHaveBeenCalled()
 	})
@@ -140,14 +157,14 @@ describe("FilePreparation", () => {
 			newHash: hash,
 			pointsToUpsert: [
 				{
-					id: uuidv5(`${filePath}:2`, QDRANT_CODE_BLOCK_NAMESPACE),
+					id: uuidv5(`${normalizedFilePath}:2`, QDRANT_CODE_BLOCK_NAMESPACE),
 					vector: [0.1, 0.2],
-					payload: { filePath: "src/file.ts", codeChunk: content, startLine: 2, endLine: 5 },
+					payload: { filePath: relativeFilePath, codeChunk: content, startLine: 2, endLine: 5 },
 				},
 				{
-					id: uuidv5(`${filePath}:8`, QDRANT_CODE_BLOCK_NAMESPACE),
+					id: uuidv5(`${normalizedFilePath}:8`, QDRANT_CODE_BLOCK_NAMESPACE),
 					vector: [0.3, 0.4],
-					payload: { filePath: "src/file.ts", codeChunk: "second", startLine: 8, endLine: 10 },
+					payload: { filePath: relativeFilePath, codeChunk: "second", startLine: 8, endLine: 10 },
 				},
 			],
 		})
@@ -163,7 +180,7 @@ describe("FilePreparation", () => {
 		expect((await new FilePreparation(dependencies).prepareFile("/.hidden/workspace/src/file.ts")).status).toBe(
 			"processed_for_batching",
 		)
-		expect(dependencies.ignoreInstance.ignores).toHaveBeenCalledWith("src/file.ts")
+		expect(dependencies.ignoreInstance.ignores).toHaveBeenCalledWith(relativeFilePath)
 	})
 
 	it("preserves Uint8Array toString content conversion", async () => {
