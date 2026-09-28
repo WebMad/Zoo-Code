@@ -1,7 +1,8 @@
 import * as vscode from "vscode"
 import { CodeIndexConfigManager } from "./config-manager"
 import { CodeIndexStateManager, IndexingState } from "./state-manager"
-import { IFileWatcher, IVectorStore } from "./interfaces"
+import { IVectorStore } from "./interfaces"
+import type { IFileWatcherFactory } from "./interfaces/file-watcher-factory"
 import { WatcherSession } from "./code-index-watcher-session"
 import { DirectoryScanner } from "./processors"
 import { CacheManager } from "./cache-manager"
@@ -26,10 +27,10 @@ export class CodeIndexOrchestrator {
 		private readonly cacheManager: CacheManager,
 		private readonly vectorStore: IVectorStore,
 		scanner: DirectoryScanner,
-		fileWatcher: IFileWatcher,
+		fileWatcherFactory: IFileWatcherFactory,
 	) {
 		this.scanExecutor = new CodeIndexScanExecutor(workspacePath, scanner, vectorStore, stateManager)
-		this.watcherSession = new WatcherSession(fileWatcher, stateManager)
+		this.watcherSession = new WatcherSession(fileWatcherFactory, stateManager)
 	}
 
 	/**
