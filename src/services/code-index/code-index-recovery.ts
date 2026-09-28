@@ -23,7 +23,7 @@ export class CodeIndexRecovery {
 		}
 
 		this._reportError("[CodeIndexOrchestrator] Error during indexing:", error, "startIndexing")
-		if (run.fullScanStarted) {
+		if (run.canCleanupFailedScan) {
 			await this._cleanupFailedFullScan()
 		} else {
 			console.log("[CodeIndexOrchestrator] Preserving existing index and cache for a future incremental scan.")

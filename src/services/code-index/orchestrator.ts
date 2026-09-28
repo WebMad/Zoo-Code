@@ -56,7 +56,7 @@ export class CodeIndexOrchestrator {
 
 		try {
 			this.stateManager.setSystemState("Indexing", "Initializing services...")
-			const scanMode = await this._prepareScan()
+			const scanMode = await this._prepareScan(run)
 			await this._runScan(run, scanMode)
 			await this._completeIndexing(run.signal)
 		} catch (error) {
@@ -103,8 +103,11 @@ export class CodeIndexOrchestrator {
 		return true
 	}
 
-	private async _prepareScan(): Promise<CodeIndexScanMode> {
+	private async _prepareScan(run: CodeIndexRun): Promise<CodeIndexScanMode> {
 		const collectionCreated = await this.vectorStore.initialize()
+		// Read actual contents, not completion metadata, before granting cleanup ownership.
+		// Query even a recreated collection; a failed read must never authorize cleanup.
+		run.preexistingCodePoints = await this.vectorStore.hasCodePoints()
 		if (collectionCreated) {
 			await this.cacheManager.clearCacheFile()
 		}

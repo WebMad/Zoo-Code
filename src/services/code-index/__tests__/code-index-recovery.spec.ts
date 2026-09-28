@@ -19,8 +19,21 @@ function setup() {
 }
 
 describe("CodeIndexRecovery", () => {
+	it.each([true, undefined])(
+		"preserves preexisting or unknown data during full-scan recovery (%s)",
+		async (presence) => {
+			const { recovery, cache, store, run } = setup()
+			run.preexistingCodePoints = presence
+			run.markScanStarted("full")
+			await recovery.handle(new Error("scan failed"), run)
+			expect(store.clearCollection).not.toHaveBeenCalled()
+			expect(cache.clearCacheFile).not.toHaveBeenCalled()
+		},
+	)
+
 	it.each(["preparation", "incremental", "full"] as const)("applies cleanup policy for %s failures", async (mode) => {
 		const { recovery, cache, store, state, watcher, run } = setup()
+		run.preexistingCodePoints = false
 		if (mode !== "preparation") run.markScanStarted(mode)
 		await recovery.handle(new Error("scan failed"), run)
 		expect(store.clearCollection).toHaveBeenCalledTimes(mode === "full" ? 1 : 0)
@@ -55,6 +68,7 @@ describe("CodeIndexRecovery", () => {
 
 	it("attempts cache cleanup after collection cleanup fails and preserves the original failure", async () => {
 		const { recovery, cache, store, state, watcher, run } = setup()
+		run.preexistingCodePoints = false
 		run.markScanStarted("full")
 		store.clearCollection.mockRejectedValue(new Error("collection cleanup failed"))
 		cache.clearCacheFile.mockRejectedValue(new Error("cache cleanup failed"))

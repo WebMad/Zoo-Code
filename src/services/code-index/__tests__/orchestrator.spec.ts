@@ -96,6 +96,7 @@ describe("CodeIndexOrchestrator - error path cleanup gating", () => {
 
 		vectorStore = {
 			initialize: vi.fn(),
+			hasCodePoints: vi.fn().mockResolvedValue(false),
 			hasIndexedData: vi.fn(),
 			markIndexingIncomplete: vi.fn(),
 			markIndexingComplete: vi.fn(),
@@ -548,6 +549,65 @@ describe("CodeIndexOrchestrator - error path cleanup gating", () => {
 		expect(scanner.scanDirectory).not.toHaveBeenCalled()
 	})
 
+	it.each([false, true])(
+		"never clears data when point presence is unknown (created/recreated: %s)",
+		async (created) => {
+			vectorStore.initialize.mockResolvedValue(created)
+			vectorStore.hasCodePoints.mockRejectedValue(new Error("point query failed"))
+			vectorStore.hasIndexedData.mockResolvedValue(false)
+			const orchestrator = new CodeIndexOrchestrator(
+				configManager,
+				stateManager,
+				workspacePath,
+				cacheManager,
+				vectorStore,
+				scanner,
+				fileWatcher,
+			)
+			await orchestrator.startIndexing()
+			expect(orchestrator.state).toBe("Error")
+			expect(vectorStore.clearCollection).not.toHaveBeenCalled()
+			expect(cacheManager.clearCacheFile).not.toHaveBeenCalled()
+			expect(scanner.scanDirectory).not.toHaveBeenCalled()
+			expect(vectorStore.markIndexingComplete).not.toHaveBeenCalled()
+		},
+	)
+
+	it.each([false, true])("cleans a failed full scan that started empty (created/recreated: %s)", async (created) => {
+		const points = new Set<string>()
+		const cache = new Map<string, string>()
+		vectorStore.initialize.mockResolvedValue(created)
+		vectorStore.hasCodePoints.mockImplementation(async () => points.size > 0)
+		vectorStore.hasIndexedData.mockResolvedValue(false)
+		vectorStore.clearCollection.mockImplementation(async () => {
+			points.clear()
+		})
+		cacheManager.clearCacheFile.mockImplementation(async () => {
+			cache.clear()
+		})
+		scanner.scanDirectory.mockImplementation(async () => {
+			points.add("partial-block")
+			cache.set("partial.ts", "partial-hash")
+			throw new Error("scan failed")
+		})
+		const orchestrator = new CodeIndexOrchestrator(
+			configManager,
+			stateManager,
+			workspacePath,
+			cacheManager,
+			vectorStore,
+			scanner,
+			fileWatcher,
+		)
+		await orchestrator.startIndexing()
+		expect(orchestrator.state).toBe("Error")
+		expect(points.size).toBe(0)
+		expect(cache.size).toBe(0)
+		expect(vectorStore.clearCollection).toHaveBeenCalledOnce()
+		expect(cacheManager.clearCacheFile).toHaveBeenCalledTimes(created ? 2 : 1)
+		expect(vectorStore.markIndexingComplete).not.toHaveBeenCalled()
+	})
+
 	it("should finish error handling when cache cleanup fails", async () => {
 		vectorStore.initialize.mockResolvedValue(false)
 		vectorStore.hasIndexedData.mockResolvedValue(false)
@@ -655,6 +715,63 @@ describe("CodeIndexOrchestrator - error path cleanup gating", () => {
 		expect(calls[calls.length - 1]).toBe("Error")
 	})
 
+	it.each([false, true])(
+		"preserves stored points and cache after an incremental failure and a failed retry (new orchestrator: %s)",
+		async (recreate) => {
+			const points = new Set(["existing-code-block"])
+			const cache = new Map([["existing.ts", "unchanged-hash"]])
+			let complete = true
+			vectorStore.initialize.mockResolvedValue(false)
+			vectorStore.hasIndexedData.mockImplementation(async () => points.size > 0 && complete)
+			vectorStore.hasCodePoints = vi.fn(async () => points.size > 0)
+			vectorStore.markIndexingIncomplete.mockImplementation(async () => {
+				complete = false
+			})
+			vectorStore.clearCollection.mockImplementation(async () => {
+				points.clear()
+			})
+			cacheManager.clearCacheFile.mockImplementation(async () => {
+				cache.clear()
+			})
+			scanner.scanDirectory.mockImplementation(async (_dir: string, onError: (error: Error) => void) => {
+				onError(new Error("embedding unavailable"))
+				return { stats: { processed: 0, skipped: 0 }, totalBlockCount: 0 }
+			})
+			let orchestrator = new CodeIndexOrchestrator(
+				configManager,
+				stateManager,
+				workspacePath,
+				cacheManager,
+				vectorStore,
+				scanner,
+				fileWatcher,
+			)
+			await orchestrator.startIndexing()
+			expect(orchestrator.state).toBe("Error")
+			expect(complete).toBe(false)
+			expect(points.size).toBe(1)
+			if (recreate) {
+				orchestrator = new CodeIndexOrchestrator(
+					configManager,
+					new CodeIndexStateManager(),
+					workspacePath,
+					cacheManager,
+					vectorStore,
+					scanner,
+					fileWatcher,
+				)
+			}
+			await orchestrator.startIndexing()
+			expect(scanner.scanDirectory).toHaveBeenCalledTimes(2)
+			expect(orchestrator.state).toBe("Error")
+			expect(points).toEqual(new Set(["existing-code-block"]))
+			expect(cache).toEqual(new Map([["existing.ts", "unchanged-hash"]]))
+			expect(vectorStore.clearCollection).not.toHaveBeenCalled()
+			expect(cacheManager.clearCacheFile).not.toHaveBeenCalled()
+			expect(vectorStore.markIndexingComplete).not.toHaveBeenCalled()
+		},
+	)
+
 	it.each([0, 2])(
 		"should report incremental batch failure without deleting existing data (%s blocks indexed)",
 		async (indexedCount) => {
@@ -738,6 +855,7 @@ describe("CodeIndexOrchestrator - stopIndexing", () => {
 
 		vectorStore = {
 			initialize: vi.fn().mockResolvedValue(false),
+			hasCodePoints: vi.fn().mockResolvedValue(false),
 			hasIndexedData: vi.fn().mockResolvedValue(false),
 			markIndexingIncomplete: vi.fn().mockResolvedValue(undefined),
 			markIndexingComplete: vi.fn().mockResolvedValue(undefined),

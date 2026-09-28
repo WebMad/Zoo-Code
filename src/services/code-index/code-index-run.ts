@@ -6,6 +6,8 @@ export type CodeIndexRunState = "running" | "cancelling" | "finished"
 /** Owns cancellation and completion for one indexing attempt, including its cleanup. */
 export class CodeIndexRun {
 	private startedScanMode: CodeIndexScanMode | undefined
+	/** Unknown until the initialized collection has been queried successfully. */
+	preexistingCodePoints: boolean | undefined
 
 	constructor(
 		private readonly controller: AbortController,
@@ -22,6 +24,10 @@ export class CodeIndexRun {
 
 	get fullScanStarted(): boolean {
 		return this.startedScanMode === "full"
+	}
+
+	get canCleanupFailedScan(): boolean {
+		return this.fullScanStarted && this.preexistingCodePoints === false
 	}
 
 	/** Record this immediately before invoking the scanner, not during preparation. */
