@@ -59,7 +59,7 @@ export class CodeIndexServiceFactory {
 		vectorStore: IVectorStore
 		parser: ICodeParser
 		scanner: DirectoryScanner
-		createWatcher: () => IFileWatcher
+		fileWatcher: IFileWatcher
 	} {
 		if (!this.configManager.isFeatureConfigured) {
 			throw new Error(t("embeddings:serviceFactory.codeIndexingNotConfigured"))
@@ -76,23 +76,22 @@ export class CodeIndexServiceFactory {
 			cacheManager: this.cacheManager,
 			ignoreInstance,
 		})
-		const createWatcher = () =>
-			this.fileWatcherFactory.create({
-				workspacePath: this.workspacePath,
-				context,
-				embedder,
-				vectorStore,
-				cacheManager,
-				ignoreInstance,
-				rooIgnoreController,
-			})
+		const fileWatcher = this.fileWatcherFactory.create({
+			workspacePath: this.workspacePath,
+			context,
+			embedder,
+			vectorStore,
+			cacheManager,
+			ignoreInstance,
+			rooIgnoreController,
+		})
 
 		return {
 			embedder,
 			vectorStore,
 			parser,
 			scanner,
-			createWatcher,
+			fileWatcher,
 		}
 	}
 }

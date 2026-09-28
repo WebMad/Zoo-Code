@@ -35,18 +35,17 @@ function setup() {
 		onDidFinishBatchProcessing: finish.event,
 	} satisfies IFileWatcher
 	const state = new CodeIndexStateManager()
-	const createWatcher = vi.fn(() => watcher)
-	const session = new WatcherSession(createWatcher, state)
-	return { start, progress, finish, watcher, state, session, createWatcher }
+	const session = new WatcherSession(watcher, state)
+	return { start, progress, finish, watcher, state, session }
 }
 
 describe("WatcherSession", () => {
-	it("allows startup after stopping an idle owner without allocating resources", async () => {
+	it("does not initialize after being stopped before startup", async () => {
 		const { session, watcher } = setup()
 		session.stop()
-		expect(watcher.dispose).not.toHaveBeenCalled()
-		await session.start()
-		expect(watcher.initialize).toHaveBeenCalledTimes(1)
+		await expect(session.start()).rejects.toMatchObject({ name: "AbortError" })
+		expect(watcher.initialize).not.toHaveBeenCalled()
+		expect(watcher.dispose).toHaveBeenCalledTimes(1)
 	})
 
 	it("reuses pending and active sessions without duplicating subscriptions", async () => {
@@ -89,6 +88,7 @@ describe("WatcherSession", () => {
 		await expect(pending).rejects.toMatchObject({ name: "AbortError" })
 		expect(start.event).not.toHaveBeenCalled()
 		expect(watcher.dispose).toHaveBeenCalledTimes(2)
+		await expect(session.start()).rejects.toMatchObject({ name: "AbortError" })
 		expect(watcher.initialize).toHaveBeenCalledTimes(1)
 	})
 
@@ -102,57 +102,7 @@ describe("WatcherSession", () => {
 		expect(state.state).toBe("Standby")
 		for (const source of [start, progress, finish]) expect(source.dispose).toHaveBeenCalledTimes(1)
 		expect(watcher.dispose).toHaveBeenCalledTimes(1)
-	})
-
-	it.each(["resolve", "reject"])("keeps the replacement session when stopped startup later %ss", async (outcome) => {
-		const first = setup()
-		const next = setup()
-		let resolve!: () => void
-		let reject!: (error: Error) => void
-		first.watcher.initialize.mockReturnValue(
-			new Promise<void>((done, fail) => {
-				resolve = done
-				reject = fail
-			}),
-		)
-		first.createWatcher.mockReturnValueOnce(first.watcher).mockReturnValue(next.watcher)
-		const pending = first.session.start()
-		const rejected = expect(pending).rejects.toBeInstanceOf(Error)
-		first.session.stop()
-		await first.session.start()
-		if (outcome === "resolve") resolve()
-		else reject(new Error("late initialization failure"))
-		await rejected
-		await first.session.start()
-		expect(first.createWatcher).toHaveBeenCalledTimes(2)
-		expect(next.watcher.initialize).toHaveBeenCalledTimes(1)
-		expect(next.watcher.dispose).not.toHaveBeenCalled()
-		next.progress.fire({ processedInBatch: 0, totalInBatch: 1 })
-		expect(first.state.state).toBe("Indexing")
-		next.finish.fire({ processedFiles: [{ path: "next.ts", status: "success" }] })
-		expect(first.state.state).toBe("Indexed")
-	})
-
-	it.each(["stop", "failure"])("creates a working replacement after %s", async (reason) => {
-		const first = setup()
-		const next = setup()
-		first.createWatcher.mockReturnValueOnce(first.watcher).mockReturnValue(next.watcher)
-		if (reason === "failure") {
-			first.watcher.initialize.mockRejectedValue(new Error("startup failed"))
-			await expect(first.session.start()).rejects.toThrow("startup failed")
-		} else {
-			await first.session.start()
-			first.session.stop()
-		}
-		await first.session.start()
-		expect(first.watcher.dispose).toHaveBeenCalledTimes(1)
-		next.start.fire(["next.ts"])
-		next.progress.fire({ processedInBatch: 0, totalInBatch: 1 })
-		expect(first.state.state).toBe("Indexing")
-		first.finish.fire({ processedFiles: [], batchError: new Error("stale") })
-		expect(first.state.state).toBe("Indexing")
-		next.finish.fire({ processedFiles: [], batchError: new Error("new failure") })
-		expect(first.state.getCurrentStatus().message).toContain("new failure")
+		await expect(session.start()).rejects.toMatchObject({ name: "AbortError" })
 	})
 
 	describe("real state manager integration", () => {

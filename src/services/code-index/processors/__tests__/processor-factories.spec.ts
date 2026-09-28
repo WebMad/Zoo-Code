@@ -159,13 +159,8 @@ describe("processor factories", () => {
 			vectorStore: options.vectorStore,
 			parser: codeParser,
 			scanner: vi.mocked(DirectoryScanner).mock.instances[0],
-			createWatcher: expect.any(Function),
+			fileWatcher: vi.mocked(FileWatcher).mock.instances[0],
 		})
-		expect(FileWatcher).not.toHaveBeenCalled()
-		const first = services.createWatcher()
-		const second = services.createWatcher()
-		expect(first).not.toBe(second)
-		expect(FileWatcher).toHaveBeenCalledTimes(2)
 		expect(vi.mocked(DirectoryScanner).mock.calls[0][3]).toBe(options.cacheManager)
 		expect(vi.mocked(FileWatcher).mock.calls[0][2]).toBe(watcherCache)
 		expect(vi.mocked(FileWatcher).mock.calls[0][0]).toBe(options.workspacePath)
