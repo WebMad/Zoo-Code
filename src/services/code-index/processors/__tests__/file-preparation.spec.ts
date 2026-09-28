@@ -1,5 +1,6 @@
 import { createHash } from "crypto"
 import path from "path"
+import { FileType, Uri } from "vscode"
 import { v5 as uuidv5 } from "uuid"
 import type { CodeBlock, ICodeParser, IEmbedder } from "../../interfaces"
 import { MAX_FILE_SIZE_BYTES, QDRANT_CODE_BLOCK_NAMESPACE } from "../../constants"
@@ -40,11 +41,21 @@ describe.each(["posix", "win32"] as const)("FilePreparation (%s paths)", (platfo
 	function setup() {
 		return {
 			workspacePath: "/workspace",
-			validateAccess: vi.fn<(path: string) => boolean>().mockReturnValue(true),
+			ignoreController: {
+				validateAccess: vi
+					.fn<FilePreparationDependencies["ignoreController"]["validateAccess"]>()
+					.mockReturnValue(true),
+			},
 			ignoreInstance: { ignores: vi.fn<(path: string) => boolean>().mockReturnValue(false) },
-			stat: vi.fn<FilePreparationDependencies["stat"]>().mockResolvedValue({ size: 100 }),
-			readFile: vi.fn<FilePreparationDependencies["readFile"]>().mockResolvedValue(Buffer.from(content)),
-			getHash: vi.fn<FilePreparationDependencies["getHash"]>(),
+			fileSystem: {
+				stat: vi
+					.fn<FilePreparationDependencies["fileSystem"]["stat"]>()
+					.mockResolvedValue({ type: FileType.File, ctime: 0, mtime: 0, size: 100 }),
+				readFile: vi
+					.fn<FilePreparationDependencies["fileSystem"]["readFile"]>()
+					.mockResolvedValue(Buffer.from(content)),
+			},
+			cacheManager: { getHash: vi.fn<FilePreparationDependencies["cacheManager"]["getHash"]>() },
 			parser: { parseFile: vi.fn<ICodeParser["parseFile"]>().mockResolvedValue([{ ...block }]) },
 			embedder: {
 				createEmbeddings: vi
@@ -64,49 +75,54 @@ describe.each(["posix", "win32"] as const)("FilePreparation (%s paths)", (platfo
 				status: "skipped",
 				reason: "File is in an ignored directory",
 			})
-			expect(dependencies.validateAccess).not.toHaveBeenCalled()
-			expect(dependencies.stat).not.toHaveBeenCalled()
+			expect(dependencies.ignoreController.validateAccess).not.toHaveBeenCalled()
+			expect(dependencies.fileSystem.stat).not.toHaveBeenCalled()
 		},
 	)
 
 	it.each(["access", "gitignore"])("skips %s exclusions before reading", async (source) => {
 		const dependencies = setup()
-		dependencies.validateAccess.mockReturnValue(source !== "access")
+		dependencies.ignoreController.validateAccess.mockReturnValue(source !== "access")
 		dependencies.ignoreInstance.ignores.mockReturnValue(source === "gitignore")
 		expect(await new FilePreparation(dependencies).prepareFile(filePath)).toEqual({
 			path: filePath,
 			status: "skipped",
 			reason: "File is ignored by .rooignore or .gitignore",
 		})
-		expect(dependencies.validateAccess).toHaveBeenCalledWith(filePath)
+		expect(dependencies.ignoreController.validateAccess).toHaveBeenCalledWith(filePath)
 		if (source === "access") {
 			expect(dependencies.ignoreInstance.ignores).not.toHaveBeenCalled()
 		} else {
 			expect(dependencies.ignoreInstance.ignores).toHaveBeenCalledWith(relativeFilePath)
 		}
-		expect(dependencies.stat).not.toHaveBeenCalled()
+		expect(dependencies.fileSystem.stat).not.toHaveBeenCalled()
 	})
 
 	it("skips oversized files without reading them", async () => {
 		const dependencies = setup()
-		dependencies.stat.mockResolvedValue({ size: MAX_FILE_SIZE_BYTES + 1 })
+		dependencies.fileSystem.stat.mockResolvedValue({
+			type: FileType.File,
+			ctime: 0,
+			mtime: 0,
+			size: MAX_FILE_SIZE_BYTES + 1,
+		})
 		expect(await new FilePreparation(dependencies).prepareFile(filePath)).toEqual({
 			path: filePath,
 			status: "skipped",
 			reason: "File is too large",
 		})
-		expect(dependencies.readFile).not.toHaveBeenCalled()
+		expect(dependencies.fileSystem.readFile).not.toHaveBeenCalled()
 	})
 
 	it("skips unchanged content before parsing or embedding", async () => {
 		const dependencies = setup()
-		dependencies.getHash.mockReturnValue(hash)
+		dependencies.cacheManager.getHash.mockReturnValue(hash)
 		expect(await new FilePreparation(dependencies).prepareFile(filePath)).toEqual({
 			path: filePath,
 			status: "skipped",
 			reason: "File has not changed",
 		})
-		expect(dependencies.getHash).toHaveBeenCalledWith(filePath)
+		expect(dependencies.cacheManager.getHash).toHaveBeenCalledWith(filePath)
 		expect(dependencies.parser.parseFile).not.toHaveBeenCalled()
 		expect(dependencies.embedder.createEmbeddings).not.toHaveBeenCalled()
 	})
@@ -140,7 +156,12 @@ describe.each(["posix", "win32"] as const)("FilePreparation (%s paths)", (platfo
 
 	it("preserves normalized paths, stable IDs and embedding order at the size limit", async () => {
 		const dependencies = setup()
-		dependencies.stat.mockResolvedValue({ size: MAX_FILE_SIZE_BYTES })
+		dependencies.fileSystem.stat.mockResolvedValue({
+			type: FileType.File,
+			ctime: 0,
+			mtime: 0,
+			size: MAX_FILE_SIZE_BYTES,
+		})
 		dependencies.parser.parseFile.mockResolvedValue([
 			{ ...block, file_path: "src/../src/file.ts" },
 			{ ...block, start_line: 8, end_line: 10, content: "second" },
@@ -168,10 +189,19 @@ describe.each(["posix", "win32"] as const)("FilePreparation (%s paths)", (platfo
 				},
 			],
 		})
-		expect(dependencies.stat).toHaveBeenCalledWith(filePath)
-		expect(dependencies.readFile).toHaveBeenCalledWith(filePath)
+		expect(dependencies.fileSystem.stat).toHaveBeenCalledWith(Uri.file(filePath))
+		expect(dependencies.fileSystem.readFile).toHaveBeenCalledWith(Uri.file(filePath))
 		expect(dependencies.parser.parseFile).toHaveBeenCalledWith(filePath, { content, fileHash: hash })
 		expect(dependencies.embedder.createEmbeddings).toHaveBeenCalledWith([content, "second"])
+	})
+
+	it("calls service methods with their original receivers", async () => {
+		const dependencies = setup()
+		expect((await new FilePreparation(dependencies).prepareFile(filePath)).status).toBe("processed_for_batching")
+		expect(dependencies.ignoreController.validateAccess.mock.contexts).toEqual([dependencies.ignoreController])
+		expect(dependencies.fileSystem.stat.mock.contexts).toEqual([dependencies.fileSystem])
+		expect(dependencies.fileSystem.readFile.mock.contexts).toEqual([dependencies.fileSystem])
+		expect(dependencies.cacheManager.getHash.mock.contexts).toEqual([dependencies.cacheManager])
 	})
 
 	it("does not treat a hidden workspace ancestor as an excluded directory", async () => {
@@ -185,7 +215,7 @@ describe.each(["posix", "win32"] as const)("FilePreparation (%s paths)", (platfo
 
 	it("preserves Uint8Array toString content conversion", async () => {
 		const dependencies = setup()
-		dependencies.readFile.mockResolvedValue(new Uint8Array([65, 66]))
+		dependencies.fileSystem.readFile.mockResolvedValue(new Uint8Array([65, 66]))
 		await new FilePreparation(dependencies).prepareFile(filePath)
 		expect(dependencies.parser.parseFile).toHaveBeenCalledWith(filePath, {
 			content: "65,66",
@@ -201,11 +231,11 @@ describe.each(["posix", "win32"] as const)("FilePreparation (%s paths)", (platfo
 			const fail = () => {
 				throw error
 			}
-			if (stage === "access") dependencies.validateAccess.mockImplementation(fail)
+			if (stage === "access") dependencies.ignoreController.validateAccess.mockImplementation(fail)
 			if (stage === "ignore") dependencies.ignoreInstance.ignores.mockImplementation(fail)
-			if (stage === "stat") dependencies.stat.mockRejectedValue(error)
-			if (stage === "read") dependencies.readFile.mockRejectedValue(error)
-			if (stage === "cache") dependencies.getHash.mockImplementation(fail)
+			if (stage === "stat") dependencies.fileSystem.stat.mockRejectedValue(error)
+			if (stage === "read") dependencies.fileSystem.readFile.mockRejectedValue(error)
+			if (stage === "cache") dependencies.cacheManager.getHash.mockImplementation(fail)
 			if (stage === "parse") dependencies.parser.parseFile.mockRejectedValue(error)
 			if (stage === "embed") dependencies.embedder.createEmbeddings.mockRejectedValue(error)
 			const result = await new FilePreparation(dependencies).prepareFile(filePath)
@@ -216,7 +246,7 @@ describe.each(["posix", "win32"] as const)("FilePreparation (%s paths)", (platfo
 
 	it("does not wrap non-Error rejections", async () => {
 		const dependencies = setup()
-		dependencies.readFile.mockRejectedValue("read failed")
+		dependencies.fileSystem.readFile.mockRejectedValue("read failed")
 		expect(await new FilePreparation(dependencies).prepareFile(filePath)).toEqual({
 			path: filePath,
 			status: "local_error",

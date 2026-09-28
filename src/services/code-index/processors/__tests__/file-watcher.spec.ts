@@ -188,6 +188,9 @@ describe("FileWatcher", () => {
 		try {
 			const preparation = fileWatcher["filePreparation"]
 			expect(preparation).toBeInstanceOf(FilePreparation)
+			expect(preparation["dependencies"].fileSystem).toBe(vscode.workspace.fs)
+			expect(preparation["dependencies"].cacheManager).toBe(mockCacheManager)
+			expect(preparation["dependencies"].ignoreController).toBe(fileWatcher["ignoreController"])
 			const path = "/mock/workspace/src/file.ts"
 			const result = await fileWatcher.processFile(path)
 			expect(prepare).toHaveBeenNthCalledWith(1, path)

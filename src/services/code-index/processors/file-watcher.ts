@@ -80,11 +80,10 @@ export class FileWatcher implements IFileWatcher {
 		}
 		this.filePreparation = new FilePreparation({
 			workspacePath: this.workspacePath,
-			validateAccess: (path) => this.ignoreController.validateAccess(path),
+			ignoreController: this.ignoreController,
 			ignoreInstance: this.ignoreInstance,
-			stat: (path) => vscode.workspace.fs.stat(vscode.Uri.file(path)),
-			readFile: (path) => vscode.workspace.fs.readFile(vscode.Uri.file(path)),
-			getHash: (path) => this.cacheManager.getHash(path),
+			fileSystem: vscode.workspace.fs,
+			cacheManager: this.cacheManager,
 			parser: codeParser,
 			embedder: this.embedder,
 		})

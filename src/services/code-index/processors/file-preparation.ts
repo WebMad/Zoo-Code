@@ -1,4 +1,5 @@
 import { createHash } from "crypto"
+import { Uri } from "vscode"
 import { v5 as uuidv5 } from "uuid"
 import type { FileProcessingResult, PointStruct } from "../interfaces"
 import type { FilePreparationDependencies } from "./file-preparation-dependencies"
@@ -28,7 +29,7 @@ export class FilePreparation {
 
 			// Check if file should be ignored
 			if (
-				!dependencies.validateAccess(filePath) ||
+				!dependencies.ignoreController.validateAccess(filePath) ||
 				(dependencies.ignoreInstance && dependencies.ignoreInstance.ignores(relativeFilePath))
 			) {
 				return {
@@ -39,7 +40,7 @@ export class FilePreparation {
 			}
 
 			// Check file size
-			const fileStat = await dependencies.stat(filePath)
+			const fileStat = await dependencies.fileSystem.stat(Uri.file(filePath))
 			if (fileStat.size > MAX_FILE_SIZE_BYTES) {
 				return {
 					path: filePath,
@@ -49,14 +50,14 @@ export class FilePreparation {
 			}
 
 			// Read file content
-			const fileContent = await dependencies.readFile(filePath)
+			const fileContent = await dependencies.fileSystem.readFile(Uri.file(filePath))
 			const content = fileContent.toString()
 
 			// Calculate hash
 			const newHash = createHash("sha256").update(content).digest("hex")
 
 			// Check if file has changed
-			if (dependencies.getHash(filePath) === newHash) {
+			if (dependencies.cacheManager.getHash(filePath) === newHash) {
 				return {
 					path: filePath,
 					status: "skipped" as const,
