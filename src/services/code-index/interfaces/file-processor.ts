@@ -57,6 +57,13 @@ export interface IFileWatcher extends vscode.Disposable {
 	initialize(): Promise<void>
 
 	/**
+	 * Waits for all started watcher batches to settle, including vector writes and hash updates.
+	 * Call dispose() first to stop intake and discard queued events. Does not drain scans
+	 * or the cache manager's independent debounced disk saves.
+	 */
+	waitForIdle(): Promise<void>
+
+	/**
 	 * Event emitted when a batch of files begins processing.
 	 * The event payload is an array of file paths included in the batch.
 	 */

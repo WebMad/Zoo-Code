@@ -3,6 +3,8 @@
 import * as vscode from "vscode"
 
 import { FileWatcher } from "../file-watcher"
+import type { PointStruct } from "../../interfaces"
+import { createHash } from "crypto"
 
 import { clearAllMocks } from "../../../../test-utils/reset"
 
@@ -91,6 +93,136 @@ vi.mock("vscode", () => ({
 }))
 
 describe("FileWatcher", () => {
+	const deferred = () => {
+		let resolve!: () => void
+		const promise = new Promise<void>((done) => {
+			resolve = done
+		})
+		return { promise, resolve }
+	}
+
+	it("drains delayed persistence before concurrent restarts can write newer points and hashes", async () => {
+		await fileWatcher.initialize()
+		vi.mocked(vscode.workspace.createFileSystemWatcher).mockClear()
+		const blocked = deferred()
+		const entered = deferred()
+		const persisted = new Map<string | number, PointStruct>()
+		const hashes = new Map<string, string>()
+		mockCacheManager.updateHash.mockImplementation((path: string, hash: string) => hashes.set(path, hash))
+		mockVectorStore.upsertPoints.mockImplementation(async (points: PointStruct[]) => {
+			entered.resolve()
+			await blocked.promise
+			for (const point of points) persisted.set(point.id, point)
+		})
+		const path = "/mock/workspace/same.ts"
+		await mockOnDidCreate(vscode.Uri.file(path))
+		await flushBatch()
+		await entered.promise
+		fileWatcher.dispose()
+		const restarted = vi.fn()
+		const restarts = [fileWatcher.initialize().then(restarted), fileWatcher.initialize()]
+		await Promise.resolve()
+		expect(restarted).not.toHaveBeenCalled()
+		expect(vscode.workspace.createFileSystemWatcher).not.toHaveBeenCalled()
+		expect(hashes.size).toBe(0)
+		blocked.resolve()
+		await Promise.all(restarts)
+		expect(vscode.workspace.createFileSystemWatcher).toHaveBeenCalledOnce()
+		vi.spyOn(fileWatcher, "processFile").mockResolvedValueOnce({
+			path,
+			status: "processed_for_batching",
+			newHash: "new-hash",
+			pointsToUpsert: [...persisted.values()].map((point) => ({ ...point, vector: [9, 9, 9] })),
+		})
+		await mockOnDidChange(vscode.Uri.file(path))
+		await flushBatch()
+		await fileWatcher.waitForIdle()
+		expect([...persisted.values()].map((point) => point.vector)).toEqual([[9, 9, 9]])
+		expect(hashes.get(path)).toBe("new-hash")
+		expect(mockCacheManager.updateHash.mock.calls.map((call: string[]) => call[1])).toEqual([
+			createHash("sha256").update("test content").digest("hex"),
+			"new-hash",
+		])
+	})
+
+	it("waits for every overlapping batch, not only the latest, and releases all idle callers", async () => {
+		await fileWatcher.initialize()
+		const first = deferred()
+		const second = deferred()
+		mockVectorStore.upsertPoints
+			.mockImplementationOnce(() => first.promise)
+			.mockImplementationOnce(() => second.promise)
+		await mockOnDidCreate(vscode.Uri.file("/mock/workspace/first.ts"))
+		await flushBatch()
+		await mockOnDidCreate(vscode.Uri.file("/mock/workspace/second.ts"))
+		await flushBatch()
+		expect(mockVectorStore.upsertPoints).toHaveBeenCalledTimes(2)
+		fileWatcher.dispose()
+		const idle = vi.fn()
+		const waiters = [fileWatcher.waitForIdle().then(idle), fileWatcher.waitForIdle().then(idle)]
+		second.resolve()
+		await flushBatch()
+		expect(idle).not.toHaveBeenCalled()
+		first.resolve()
+		await Promise.all(waiters)
+		expect(idle).toHaveBeenCalledTimes(2)
+		expect(fileWatcher["activeBatches"].size).toBe(0)
+		await fileWatcher.waitForIdle()
+	})
+
+	it("does not revive a pending restart after another disposal or accept stale native callbacks", async () => {
+		await fileWatcher.initialize()
+		const staleCreate = mockOnDidCreate
+		const blocked = deferred()
+		mockVectorStore.upsertPoints.mockImplementationOnce(() => blocked.promise)
+		await mockOnDidCreate(vscode.Uri.file("/mock/workspace/old.ts"))
+		await flushBatch()
+		fileWatcher.dispose()
+		vi.mocked(vscode.workspace.createFileSystemWatcher).mockClear()
+		const restart = fileWatcher.initialize()
+		fileWatcher.dispose()
+		blocked.resolve()
+		await restart
+		expect(vscode.workspace.createFileSystemWatcher).not.toHaveBeenCalled()
+		await fileWatcher.initialize()
+		await staleCreate(vscode.Uri.file("/mock/workspace/stale.ts"))
+		await flushBatch()
+		expect(mockVectorStore.upsertPoints).toHaveBeenCalledOnce()
+		expect(vscode.workspace.createFileSystemWatcher).toHaveBeenCalledOnce()
+	})
+
+	it("registers work before a batch-start listener restarts the watcher", async () => {
+		await fileWatcher.initialize()
+		const blocked = deferred()
+		mockVectorStore.upsertPoints.mockImplementationOnce(() => blocked.promise)
+		let restart: Promise<void> | undefined
+		fileWatcher.onDidStartBatchProcessing(() => {
+			fileWatcher.dispose()
+			restart = fileWatcher.initialize()
+		})
+		vi.mocked(vscode.workspace.createFileSystemWatcher).mockClear()
+		await mockOnDidCreate(vscode.Uri.file("/mock/workspace/old.ts"))
+		await flushBatch()
+		expect(restart).toBeDefined()
+		expect(vscode.workspace.createFileSystemWatcher).not.toHaveBeenCalled()
+		blocked.resolve()
+		await restart
+		expect(vscode.workspace.createFileSystemWatcher).toHaveBeenCalledOnce()
+	})
+
+	it("handles timer batch rejection and removes rejected work from the drain set", async () => {
+		await fileWatcher.initialize()
+		const error = new Error("unexpected batch failure")
+		const log = vi.spyOn(console, "error").mockImplementation(() => {})
+		fileWatcher["processBatch"] = vi.fn<FileWatcher["processBatch"]>().mockRejectedValueOnce(error)
+		await mockOnDidCreate(vscode.Uri.file("/mock/workspace/error.ts"))
+		await flushBatch()
+		await fileWatcher.waitForIdle()
+		expect(log).toHaveBeenCalledWith("[FileWatcher] Unhandled batch processing error:", error)
+		expect(fileWatcher["activeBatches"].size).toBe(0)
+		log.mockRestore()
+	})
+
 	it("does not deliver an old batch into subscriptions created after restart", async () => {
 		await fileWatcher.initialize()
 		let release!: () => void
@@ -110,12 +242,13 @@ describe("FileWatcher", () => {
 		const processing = flushBatch()
 		await started
 		fileWatcher.dispose()
-		await fileWatcher.initialize()
+		const restarting = fileWatcher.initialize()
+		release()
+		await restarting
 		const progress = vi.fn()
 		const finished = vi.fn()
 		fileWatcher.onBatchProgressUpdate(progress)
 		fileWatcher.onDidFinishBatchProcessing(finished)
-		release()
 		await processing
 		expect(progress).not.toHaveBeenCalled()
 		expect(finished).not.toHaveBeenCalled()

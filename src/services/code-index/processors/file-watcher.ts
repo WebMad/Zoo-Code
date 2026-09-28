@@ -42,6 +42,8 @@ export class FileWatcher implements IFileWatcher {
 	private readonly batchSegmentThreshold: number
 
 	private eventsDisposed = false
+	private sessionGeneration = 0
+	private readonly activeBatches = new Set<Promise<void>>()
 	private _onDidStartBatchProcessing = new vscode.EventEmitter<string[]>()
 	private _onBatchProgressUpdate = new vscode.EventEmitter<{
 		processedInBatch: number
@@ -114,6 +116,10 @@ export class FileWatcher implements IFileWatcher {
 	 */
 	async initialize(): Promise<void> {
 		if (this.fileWatcher) return
+		const generation = this.sessionGeneration
+		await this.waitForIdle()
+		// A stop invalidates pending restarts; concurrent initializers share the same watcher.
+		if (generation !== this.sessionGeneration || this.fileWatcher) return
 		if (this.eventsDisposed) {
 			this._onDidStartBatchProcessing = new vscode.EventEmitter<string[]>()
 			this._onBatchProgressUpdate = new vscode.EventEmitter<{
@@ -132,15 +138,32 @@ export class FileWatcher implements IFileWatcher {
 		this.fileWatcher = vscode.workspace.createFileSystemWatcher(filePattern)
 
 		// Register event handlers
-		this.fileWatcher.onDidCreate(this.handleFileCreated.bind(this))
-		this.fileWatcher.onDidChange(this.handleFileChanged.bind(this))
-		this.fileWatcher.onDidDelete(this.handleFileDeleted.bind(this))
+		this.fileWatcher.onDidCreate((uri) => {
+			if (generation === this.sessionGeneration) void this.handleFileCreated(uri)
+		})
+		this.fileWatcher.onDidChange((uri) => {
+			if (generation === this.sessionGeneration) void this.handleFileChanged(uri)
+		})
+		this.fileWatcher.onDidDelete((uri) => {
+			if (generation === this.sessionGeneration) void this.handleFileDeleted(uri)
+		})
+	}
+
+	/** Waits for all started batches, including persistence and hash updates, to settle.
+	 * Dispose first to discard queued events and prevent more work from arriving.
+	 * This does not drain independent cache-save timers or directory scans.
+	 */
+	async waitForIdle(): Promise<void> {
+		while (this.activeBatches.size > 0) {
+			await Promise.allSettled([...this.activeBatches])
+		}
 	}
 
 	/**
 	 * Disposes the file watcher
 	 */
 	dispose(): void {
+		this.sessionGeneration++
 		this.fileWatcher?.dispose()
 		this.fileWatcher = undefined
 		if (this.batchProcessDebounceTimer) {
@@ -188,7 +211,12 @@ export class FileWatcher implements IFileWatcher {
 		if (this.batchProcessDebounceTimer) {
 			clearTimeout(this.batchProcessDebounceTimer)
 		}
-		this.batchProcessDebounceTimer = setTimeout(() => this.triggerBatchProcessing(), this.BATCH_DEBOUNCE_DELAY_MS)
+		this.batchProcessDebounceTimer = setTimeout(() => {
+			this.batchProcessDebounceTimer = undefined
+			void this.triggerBatchProcessing().catch((error: unknown) => {
+				console.error("[FileWatcher] Unhandled batch processing error:", error)
+			})
+		}, this.BATCH_DEBOUNCE_DELAY_MS)
 	}
 
 	/**
@@ -205,13 +233,22 @@ export class FileWatcher implements IFileWatcher {
 		// Capture this session's emitters before notifying listeners or awaiting work.
 		// Disposed emitters drop late events instead of forwarding them to a restarted session.
 		const batchEvents = {
+			started: this._onDidStartBatchProcessing,
 			progress: this._onBatchProgressUpdate,
 			finished: this._onDidFinishBatchProcessing,
 		}
 		const filePathsInBatch = Array.from(eventsToProcess.keys())
-		this._onDidStartBatchProcessing.fire(filePathsInBatch)
-
-		await this.processBatch(eventsToProcess, batchEvents)
+		// Register before invoking listeners: a listener may synchronously stop/restart us.
+		const batch = Promise.resolve().then(async () => {
+			batchEvents.started.fire(filePathsInBatch)
+			await this.processBatch(eventsToProcess, batchEvents)
+		})
+		this.activeBatches.add(batch)
+		try {
+			await batch
+		} finally {
+			this.activeBatches.delete(batch)
+		}
 	}
 
 	/**
