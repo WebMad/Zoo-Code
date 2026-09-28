@@ -2,7 +2,8 @@ import { createHash } from "crypto"
 import { v5 as uuidv5 } from "uuid"
 import type { CodeBlock, ICodeParser, IEmbedder } from "../../interfaces"
 import { MAX_FILE_SIZE_BYTES, QDRANT_CODE_BLOCK_NAMESPACE } from "../../constants"
-import { FilePreparation, type FilePreparationDependencies } from "../file-preparation"
+import { FilePreparation } from "../file-preparation"
+import type { FilePreparationDependencies } from "../file-preparation-dependencies"
 
 describe("FilePreparation", () => {
 	const filePath = "/workspace/src/file.ts"

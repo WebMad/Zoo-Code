@@ -1,21 +1,10 @@
 import { createHash } from "crypto"
 import { v5 as uuidv5 } from "uuid"
-import type { Ignore } from "ignore"
-import type { FileProcessingResult, ICodeParser, IEmbedder, PointStruct } from "../interfaces"
+import type { FileProcessingResult, PointStruct } from "../interfaces"
+import type { FilePreparationDependencies } from "./file-preparation-dependencies"
 import { MAX_FILE_SIZE_BYTES, QDRANT_CODE_BLOCK_NAMESPACE } from "../constants"
 import { generateNormalizedAbsolutePath, generateRelativeFilePath } from "../shared/get-relative-path"
 import { isPathInIgnoredDirectory } from "../../glob/ignore-utils"
-
-export interface FilePreparationDependencies {
-	workspacePath: string
-	validateAccess: (filePath: string) => boolean
-	ignoreInstance?: Pick<Ignore, "ignores">
-	stat: (filePath: string) => PromiseLike<{ size: number }>
-	readFile: (filePath: string) => PromiseLike<Uint8Array>
-	getHash: (filePath: string) => string | undefined
-	parser: ICodeParser
-	embedder?: Pick<IEmbedder, "createEmbeddings">
-}
 
 /** Prepares one file for batching without writing points or mutating the hash cache. */
 export class FilePreparation {
