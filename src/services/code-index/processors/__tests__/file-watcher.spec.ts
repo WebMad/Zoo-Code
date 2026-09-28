@@ -3,6 +3,7 @@
 import * as vscode from "vscode"
 
 import { FileWatcher } from "../file-watcher"
+import * as filePreparation from "../file-preparation"
 
 import { clearAllMocks } from "../../../../test-utils/reset"
 
@@ -180,6 +181,25 @@ describe("FileWatcher", () => {
 		fileWatcher?.dispose()
 		await vi.runOnlyPendingTimersAsync()
 		vi.useRealTimers()
+	})
+
+	it("delegates public processFile to preparation without writing points or cache", async () => {
+		const prepare = vi.spyOn(filePreparation, "prepareFile")
+		try {
+			const path = "/mock/workspace/src/file.ts"
+			const result = await fileWatcher.processFile(path)
+			expect(prepare).toHaveBeenCalledWith(path, expect.objectContaining({ workspacePath: "/mock/workspace" }))
+			expect(result).toBe(await prepare.mock.results[0].value)
+			expect(result.status).toBe("processed_for_batching")
+			expect(result.pointsToUpsert).toHaveLength(1)
+			expect(vscode.workspace.fs.stat).toHaveBeenCalledWith(vscode.Uri.file(path))
+			expect(vscode.workspace.fs.readFile).toHaveBeenCalledWith(vscode.Uri.file(path))
+			expect(mockVectorStore.upsertPoints).not.toHaveBeenCalled()
+			expect(mockCacheManager.updateHash).not.toHaveBeenCalled()
+			expect(mockCacheManager.deleteHash).not.toHaveBeenCalled()
+		} finally {
+			prepare.mockRestore()
+		}
 	})
 
 	describe("file filtering", () => {

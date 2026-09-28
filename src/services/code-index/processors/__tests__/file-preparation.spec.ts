@@ -1,0 +1,206 @@
+import { createHash } from "crypto"
+import { v5 as uuidv5 } from "uuid"
+import type { CodeBlock, ICodeParser, IEmbedder } from "../../interfaces"
+import { MAX_FILE_SIZE_BYTES, QDRANT_CODE_BLOCK_NAMESPACE } from "../../constants"
+import { prepareFile, type FilePreparationDependencies } from "../file-preparation"
+
+describe("prepareFile", () => {
+	const filePath = "/workspace/src/file.ts"
+	const content = "test content"
+	const hash = createHash("sha256").update(content).digest("hex")
+	const block: CodeBlock = {
+		file_path: filePath,
+		identifier: null,
+		type: "function",
+		start_line: 2,
+		end_line: 5,
+		content,
+		fileHash: hash,
+		segmentHash: "segment",
+	}
+
+	function setup() {
+		return {
+			workspacePath: "/workspace",
+			validateAccess: vi.fn<(path: string) => boolean>().mockReturnValue(true),
+			ignoreInstance: { ignores: vi.fn<(path: string) => boolean>().mockReturnValue(false) },
+			stat: vi.fn<FilePreparationDependencies["stat"]>().mockResolvedValue({ size: 100 }),
+			readFile: vi.fn<FilePreparationDependencies["readFile"]>().mockResolvedValue(Buffer.from(content)),
+			getHash: vi.fn<FilePreparationDependencies["getHash"]>(),
+			parser: { parseFile: vi.fn<ICodeParser["parseFile"]>().mockResolvedValue([{ ...block }]) },
+			embedder: {
+				createEmbeddings: vi
+					.fn<IEmbedder["createEmbeddings"]>()
+					.mockResolvedValue({ embeddings: [[0.1, 0.2]] }),
+			},
+		} satisfies FilePreparationDependencies
+	}
+
+	it.each([".git/config", ".hidden/file.ts", "node_modules/pkg/file.ts", "dist/file.js"])(
+		"skips excluded directory %s before access or file reads",
+		async (relativePath) => {
+			const dependencies = setup()
+			const path = `/workspace/${relativePath}`
+			expect(await prepareFile(path, dependencies)).toEqual({
+				path,
+				status: "skipped",
+				reason: "File is in an ignored directory",
+			})
+			expect(dependencies.validateAccess).not.toHaveBeenCalled()
+			expect(dependencies.stat).not.toHaveBeenCalled()
+		},
+	)
+
+	it.each(["access", "gitignore"])("skips %s exclusions before reading", async (source) => {
+		const dependencies = setup()
+		dependencies.validateAccess.mockReturnValue(source !== "access")
+		dependencies.ignoreInstance.ignores.mockReturnValue(source === "gitignore")
+		expect(await prepareFile(filePath, dependencies)).toEqual({
+			path: filePath,
+			status: "skipped",
+			reason: "File is ignored by .rooignore or .gitignore",
+		})
+		expect(dependencies.validateAccess).toHaveBeenCalledWith(filePath)
+		if (source === "access") {
+			expect(dependencies.ignoreInstance.ignores).not.toHaveBeenCalled()
+		} else {
+			expect(dependencies.ignoreInstance.ignores).toHaveBeenCalledWith("src/file.ts")
+		}
+		expect(dependencies.stat).not.toHaveBeenCalled()
+	})
+
+	it("skips oversized files without reading them", async () => {
+		const dependencies = setup()
+		dependencies.stat.mockResolvedValue({ size: MAX_FILE_SIZE_BYTES + 1 })
+		expect(await prepareFile(filePath, dependencies)).toEqual({
+			path: filePath,
+			status: "skipped",
+			reason: "File is too large",
+		})
+		expect(dependencies.readFile).not.toHaveBeenCalled()
+	})
+
+	it("skips unchanged content before parsing or embedding", async () => {
+		const dependencies = setup()
+		dependencies.getHash.mockReturnValue(hash)
+		expect(await prepareFile(filePath, dependencies)).toEqual({
+			path: filePath,
+			status: "skipped",
+			reason: "File has not changed",
+		})
+		expect(dependencies.getHash).toHaveBeenCalledWith(filePath)
+		expect(dependencies.parser.parseFile).not.toHaveBeenCalled()
+		expect(dependencies.embedder.createEmbeddings).not.toHaveBeenCalled()
+	})
+
+	it("returns the hash and empty points when parsing produces no blocks", async () => {
+		const dependencies = setup()
+		dependencies.parser.parseFile.mockResolvedValue([])
+		expect(await prepareFile(filePath, dependencies)).toEqual({
+			path: filePath,
+			status: "processed_for_batching",
+			newHash: hash,
+			pointsToUpsert: [],
+		})
+		expect(dependencies.embedder.createEmbeddings).not.toHaveBeenCalled()
+	})
+
+	it("still parses and returns the hash without an embedder or gitignore", async () => {
+		const dependencies = setup()
+		expect(
+			await prepareFile(filePath, { ...dependencies, embedder: undefined, ignoreInstance: undefined }),
+		).toEqual({
+			path: filePath,
+			status: "processed_for_batching",
+			newHash: hash,
+			pointsToUpsert: [],
+		})
+		expect(dependencies.parser.parseFile).toHaveBeenCalledWith(filePath, { content, fileHash: hash })
+	})
+
+	it("preserves normalized paths, stable IDs and embedding order at the size limit", async () => {
+		const dependencies = setup()
+		dependencies.stat.mockResolvedValue({ size: MAX_FILE_SIZE_BYTES })
+		dependencies.parser.parseFile.mockResolvedValue([
+			{ ...block, file_path: "src/../src/file.ts" },
+			{ ...block, start_line: 8, end_line: 10, content: "second" },
+		])
+		dependencies.embedder.createEmbeddings.mockResolvedValue({
+			embeddings: [
+				[0.1, 0.2],
+				[0.3, 0.4],
+			],
+		})
+		expect(await prepareFile(filePath, dependencies)).toEqual({
+			path: filePath,
+			status: "processed_for_batching",
+			newHash: hash,
+			pointsToUpsert: [
+				{
+					id: uuidv5(`${filePath}:2`, QDRANT_CODE_BLOCK_NAMESPACE),
+					vector: [0.1, 0.2],
+					payload: { filePath: "src/file.ts", codeChunk: content, startLine: 2, endLine: 5 },
+				},
+				{
+					id: uuidv5(`${filePath}:8`, QDRANT_CODE_BLOCK_NAMESPACE),
+					vector: [0.3, 0.4],
+					payload: { filePath: "src/file.ts", codeChunk: "second", startLine: 8, endLine: 10 },
+				},
+			],
+		})
+		expect(dependencies.stat).toHaveBeenCalledWith(filePath)
+		expect(dependencies.readFile).toHaveBeenCalledWith(filePath)
+		expect(dependencies.parser.parseFile).toHaveBeenCalledWith(filePath, { content, fileHash: hash })
+		expect(dependencies.embedder.createEmbeddings).toHaveBeenCalledWith([content, "second"])
+	})
+
+	it("does not treat a hidden workspace ancestor as an excluded directory", async () => {
+		const dependencies = setup()
+		dependencies.workspacePath = "/.hidden/workspace"
+		expect((await prepareFile("/.hidden/workspace/src/file.ts", dependencies)).status).toBe(
+			"processed_for_batching",
+		)
+		expect(dependencies.ignoreInstance.ignores).toHaveBeenCalledWith("src/file.ts")
+	})
+
+	it("preserves Uint8Array toString content conversion", async () => {
+		const dependencies = setup()
+		dependencies.readFile.mockResolvedValue(new Uint8Array([65, 66]))
+		await prepareFile(filePath, dependencies)
+		expect(dependencies.parser.parseFile).toHaveBeenCalledWith(filePath, {
+			content: "65,66",
+			fileHash: createHash("sha256").update("65,66").digest("hex"),
+		})
+	})
+
+	it.each(["access", "ignore", "stat", "read", "cache", "parse", "embed"])(
+		"returns the original %s error as a local error",
+		async (stage) => {
+			const dependencies = setup()
+			const error = new Error(`${stage} failed`)
+			const fail = () => {
+				throw error
+			}
+			if (stage === "access") dependencies.validateAccess.mockImplementation(fail)
+			if (stage === "ignore") dependencies.ignoreInstance.ignores.mockImplementation(fail)
+			if (stage === "stat") dependencies.stat.mockRejectedValue(error)
+			if (stage === "read") dependencies.readFile.mockRejectedValue(error)
+			if (stage === "cache") dependencies.getHash.mockImplementation(fail)
+			if (stage === "parse") dependencies.parser.parseFile.mockRejectedValue(error)
+			if (stage === "embed") dependencies.embedder.createEmbeddings.mockRejectedValue(error)
+			const result = await prepareFile(filePath, dependencies)
+			expect(result).toEqual({ path: filePath, status: "local_error", error })
+			expect(result.error).toBe(error)
+		},
+	)
+
+	it("does not wrap non-Error rejections", async () => {
+		const dependencies = setup()
+		dependencies.readFile.mockRejectedValue("read failed")
+		expect(await prepareFile(filePath, dependencies)).toEqual({
+			path: filePath,
+			status: "local_error",
+			error: "read failed",
+		})
+	})
+})
