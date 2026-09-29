@@ -1,26 +1,17 @@
 import * as path from "path"
-import type { Disposable, Event } from "vscode"
-import type { BatchProcessingSummary, IFileWatcher } from "./interfaces"
+import type { Event } from "vscode"
+import type { BatchProcessingSummary } from "./interfaces"
 import type { CodeIndexStateManager } from "./state-manager"
 import type { IFileWatcherFactory } from "./interfaces/file-watcher-factory"
-
-interface Session {
-	watcher: IFileWatcher
-	stopped: boolean
-	subscriptions: Disposable[]
-	ready: Promise<void>
-}
+import type { Session } from "./interfaces/watcher-session"
 
 /** Owns watcher startup and subscriptions; only batch summaries publish final outcomes. */
-export class WatcherSession {
+export class CodeIndexWatcherSession {
 	private session?: Session
 
 	constructor(
 		private readonly watcherFactory: IFileWatcherFactory,
-		private readonly stateManager: Pick<
-			CodeIndexStateManager,
-			"state" | "setSystemState" | "reportFileQueueProgress"
-		>,
+		private readonly stateManager: CodeIndexStateManager,
 	) {}
 
 	start(): Promise<void> {

@@ -1,7 +1,7 @@
 import type { Event } from "vscode"
 import type { BatchProcessingSummary, IFileWatcher } from "../interfaces"
 import { CodeIndexStateManager } from "../state-manager"
-import { WatcherSession } from "../code-index-watcher-session"
+import { CodeIndexWatcherSession } from "../code-index-watcher-session"
 
 vi.mock("vscode", async () => {
 	const { makeEventEmitter } = await import("../../../test-utils/vscode")
@@ -36,11 +36,11 @@ function setup() {
 	} satisfies IFileWatcher
 	const state = new CodeIndexStateManager()
 	const factory = { create: vi.fn(() => watcher) }
-	const session = new WatcherSession(factory, state)
+	const session = new CodeIndexWatcherSession(factory, state)
 	return { start, progress, finish, watcher, state, session, factory }
 }
 
-describe("WatcherSession", () => {
+describe("CodeIndexWatcherSession", () => {
 	it("allows startup after stopping an idle owner without allocating resources", async () => {
 		const { session, watcher, factory } = setup()
 		session.stop()

@@ -3,7 +3,7 @@ import { CodeIndexConfigManager } from "./config-manager"
 import { CodeIndexStateManager, IndexingState } from "./state-manager"
 import { IVectorStore } from "./interfaces"
 import type { IFileWatcherFactory } from "./interfaces/file-watcher-factory"
-import { WatcherSession } from "./code-index-watcher-session"
+import { CodeIndexWatcherSession } from "./code-index-watcher-session"
 import { DirectoryScanner } from "./processors"
 import { CacheManager } from "./cache-manager"
 import { CodeIndexScanExecutor } from "./code-index-scan-executor"
@@ -15,7 +15,7 @@ import { t } from "../../i18n"
  * Manages the code indexing workflow, coordinating between different services and managers.
  */
 export class CodeIndexOrchestrator {
-	private readonly watcherSession: WatcherSession
+	private readonly watcherSession: CodeIndexWatcherSession
 	private _isProcessing: boolean = false
 	private _abortController: AbortController | null = null
 	private readonly scanExecutor: CodeIndexScanExecutor
@@ -30,7 +30,7 @@ export class CodeIndexOrchestrator {
 		fileWatcherFactory: IFileWatcherFactory,
 	) {
 		this.scanExecutor = new CodeIndexScanExecutor(workspacePath, scanner, vectorStore, stateManager)
-		this.watcherSession = new WatcherSession(fileWatcherFactory, stateManager)
+		this.watcherSession = new CodeIndexWatcherSession(fileWatcherFactory, stateManager)
 	}
 
 	/**
