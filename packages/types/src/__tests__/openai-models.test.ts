@@ -50,7 +50,7 @@ describe("OpenAI native models", () => {
 		])
 		expect(openAiCodexModels["gpt-6.1-sol"]).toMatchObject({
 			maxTokens: 128_000,
-			contextWindow: 272_000,
+			contextWindow: 872_000,
 			includedTools: ["apply_patch"],
 			excludedTools: ["apply_diff", "write_to_file"],
 			supportsImages: true,

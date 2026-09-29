@@ -27,8 +27,8 @@ export const openAiCodexModels = {
 	// https://github.com/openai/codex/blob/main/codex-rs/models-manager/models.json
 	"gpt-6.1-sol": {
 		maxTokens: 128000,
-		// Codex's default context window; the optional 872K maximum is not enabled here.
-		contextWindow: 272000,
+		// Use Codex's supported maximum rather than its 272K default compaction budget.
+		contextWindow: 872000,
 		includedTools: ["apply_patch"],
 		excludedTools: ["apply_diff", "write_to_file"],
 		supportsImages: true,
