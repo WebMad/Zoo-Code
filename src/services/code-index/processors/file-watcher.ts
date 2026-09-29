@@ -15,6 +15,7 @@ import { codeParser } from "./parser"
 import { FilePreparation } from "./file-preparation"
 import { FileEventAccumulator } from "./file-event-accumulator"
 import type { FileWatcherEvent } from "../interfaces/file-watcher-event"
+import type { PreparedWatcherFile } from "../interfaces/prepared-watcher-file"
 import { CacheManager } from "../cache-manager"
 import { TelemetryService } from "@roo-code/telemetry"
 import { TelemetryEventName } from "@roo-code/types"
@@ -235,13 +236,12 @@ export class FileWatcher implements IFileWatcher {
 			const chunkResults = await Promise.all(chunkProcessingPromises)
 
 			for (const { path, result } of chunkResults) {
-				this.collectPreparedFile(
-					path,
-					result,
-					batchResults,
-					pointsForBatchUpsert,
-					successfullyProcessedForUpsert,
-				)
+				if (result.kind === "completed") {
+					batchResults.push(result.result)
+				} else {
+					pointsForBatchUpsert.push(...result.points)
+					if (result.file) successfullyProcessedForUpsert.push(result.file)
+				}
 
 				// A path has one final event, so upserts and explicit deletions are disjoint.
 				processedCountInBatch++
@@ -260,56 +260,44 @@ export class FileWatcher implements IFileWatcher {
 		}
 	}
 
-	private async prepareFileForBatch(path: string): Promise<FileProcessingResult> {
+	private async prepareFileForBatch(path: string): Promise<PreparedWatcherFile> {
 		let result: FileProcessingResult | undefined
 		try {
 			result = await this.processFile(path)
 		} catch (error) {
 			console.error(`[FileWatcher] Unhandled exception processing file ${path}:`, error)
-			if (error) return { path, status: "error", error: error as Error }
+			if (error) return { kind: "completed", result: { path, status: "error", error: error as Error } }
 		}
 
 		if (!result) {
 			return {
-				path,
-				status: "error",
-				error: new Error(`Fulfilled promise with no result or error for file ${path}`),
+				kind: "completed",
+				result: {
+					path,
+					status: "error",
+					error: new Error(`Fulfilled promise with no result or error for file ${path}`),
+				},
 			}
 		}
-		if (result.status === "skipped" || result.status === "local_error") return result
-		if (result.status === "processed_for_batching") return result
+		if (result.status === "skipped" || result.status === "local_error") {
+			return { kind: "completed", result }
+		}
+		if (result.status === "processed_for_batching" && result.pointsToUpsert) {
+			const prepared: PreparedWatcherFile = { kind: "upsert", points: result.pointsToUpsert }
+			if (result.path) {
+				prepared.file = result.newHash ? { path: result.path, newHash: result.newHash } : { path: result.path }
+			}
+			return prepared
+		}
 
 		return {
-			path,
-			status: "error",
-			error: new Error(`Unexpected result status from processFile: ${result.status} for file ${path}`),
-		}
-	}
-
-	private collectPreparedFile(
-		path: string,
-		result: FileProcessingResult,
-		batchResults: FileProcessingResult[],
-		pointsForBatchUpsert: PointStruct[],
-		successfullyProcessedForUpsert: Array<{ path: string; newHash?: string }>,
-	): void {
-		if (result.status !== "processed_for_batching") {
-			batchResults.push(result)
-			return
-		}
-		if (!result.pointsToUpsert) {
-			batchResults.push({
+			kind: "completed",
+			result: {
 				path,
 				status: "error",
 				error: new Error(`Unexpected result status from processFile: ${result.status} for file ${path}`),
-			})
-			return
+			},
 		}
-
-		pointsForBatchUpsert.push(...result.pointsToUpsert)
-		if (!result.path) return
-		const file = result.newHash ? { path: result.path, newHash: result.newHash } : { path: result.path }
-		successfullyProcessedForUpsert.push(file)
 	}
 
 	private async _executeBatchUpsertOperations(
