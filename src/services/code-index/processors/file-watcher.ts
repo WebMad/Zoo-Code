@@ -218,10 +218,9 @@ export class FileWatcher implements IFileWatcher {
 	}> {
 		const pointsForBatchUpsert: PointStruct[] = []
 		const successfullyProcessedForUpsert: Array<{ path: string; newHash?: string }> = []
-		const filesToProcessConcurrently = [...filesToUpsertDetails]
 
-		for (let i = 0; i < filesToProcessConcurrently.length; i += this.FILE_PROCESSING_CONCURRENCY_LIMIT) {
-			const chunkToProcess = filesToProcessConcurrently.slice(i, i + this.FILE_PROCESSING_CONCURRENCY_LIMIT)
+		for (let i = 0; i < filesToUpsertDetails.length; i += this.FILE_PROCESSING_CONCURRENCY_LIMIT) {
+			const chunkToProcess = filesToUpsertDetails.slice(i, i + this.FILE_PROCESSING_CONCURRENCY_LIMIT)
 
 			const chunkProcessingPromises = chunkToProcess.map(async (fileDetail) => {
 				this._onBatchProgressUpdate.fire({
@@ -229,48 +228,20 @@ export class FileWatcher implements IFileWatcher {
 					totalInBatch: totalFilesInBatch,
 					currentFile: fileDetail.path,
 				})
-				try {
-					const result = await this.processFile(fileDetail.path)
-					return { path: fileDetail.path, result: result, error: undefined }
-				} catch (e) {
-					const error = e as Error
-					console.error(`[FileWatcher] Unhandled exception processing file ${fileDetail.path}:`, e)
-					return { path: fileDetail.path, result: undefined, error: error }
-				}
+				return { path: fileDetail.path, result: await this.prepareFileForBatch(fileDetail.path) }
 			})
 
 			// Each preparation failure is captured above so other files can still complete.
 			const chunkResults = await Promise.all(chunkProcessingPromises)
 
-			for (const { path, result, error: directError } of chunkResults) {
-				if (directError) {
-					batchResults.push({ path, status: "error", error: directError })
-				} else if (result) {
-					if (result.status === "skipped" || result.status === "local_error") {
-						batchResults.push(result)
-					} else if (result.status === "processed_for_batching" && result.pointsToUpsert) {
-						pointsForBatchUpsert.push(...result.pointsToUpsert)
-						if (result.path && result.newHash) {
-							successfullyProcessedForUpsert.push({ path: result.path, newHash: result.newHash })
-						} else if (result.path) {
-							successfullyProcessedForUpsert.push({ path: result.path })
-						}
-					} else {
-						batchResults.push({
-							path,
-							status: "error",
-							error: new Error(
-								`Unexpected result status from processFile: ${result.status} for file ${path}`,
-							),
-						})
-					}
-				} else {
-					batchResults.push({
-						path,
-						status: "error",
-						error: new Error(`Fulfilled promise with no result or error for file ${path}`),
-					})
-				}
+			for (const { path, result } of chunkResults) {
+				this.collectPreparedFile(
+					path,
+					result,
+					batchResults,
+					pointsForBatchUpsert,
+					successfullyProcessedForUpsert,
+				)
 
 				// A path has one final event, so upserts and explicit deletions are disjoint.
 				processedCountInBatch++
@@ -287,6 +258,58 @@ export class FileWatcher implements IFileWatcher {
 			successfullyProcessedForUpsert,
 			processedCount: processedCountInBatch,
 		}
+	}
+
+	private async prepareFileForBatch(path: string): Promise<FileProcessingResult> {
+		let result: FileProcessingResult | undefined
+		try {
+			result = await this.processFile(path)
+		} catch (error) {
+			console.error(`[FileWatcher] Unhandled exception processing file ${path}:`, error)
+			if (error) return { path, status: "error", error: error as Error }
+		}
+
+		if (!result) {
+			return {
+				path,
+				status: "error",
+				error: new Error(`Fulfilled promise with no result or error for file ${path}`),
+			}
+		}
+		if (result.status === "skipped" || result.status === "local_error") return result
+		if (result.status === "processed_for_batching") return result
+
+		return {
+			path,
+			status: "error",
+			error: new Error(`Unexpected result status from processFile: ${result.status} for file ${path}`),
+		}
+	}
+
+	private collectPreparedFile(
+		path: string,
+		result: FileProcessingResult,
+		batchResults: FileProcessingResult[],
+		pointsForBatchUpsert: PointStruct[],
+		successfullyProcessedForUpsert: Array<{ path: string; newHash?: string }>,
+	): void {
+		if (result.status !== "processed_for_batching") {
+			batchResults.push(result)
+			return
+		}
+		if (!result.pointsToUpsert) {
+			batchResults.push({
+				path,
+				status: "error",
+				error: new Error(`Unexpected result status from processFile: ${result.status} for file ${path}`),
+			})
+			return
+		}
+
+		pointsForBatchUpsert.push(...result.pointsToUpsert)
+		if (!result.path) return
+		const file = result.newHash ? { path: result.path, newHash: result.newHash } : { path: result.path }
+		successfullyProcessedForUpsert.push(file)
 	}
 
 	private async _executeBatchUpsertOperations(
