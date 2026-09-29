@@ -181,6 +181,7 @@ describe("FileWatcher", () => {
 	})
 
 	afterEach(async () => {
+		vi.mocked(vscode.workspace.getConfiguration).mockReset()
 		fileWatcher?.dispose()
 		await vi.runOnlyPendingTimersAsync()
 		vi.useRealTimers()
@@ -340,7 +341,6 @@ describe("FileWatcher", () => {
 				source === "explicit" ? [2, 1] : [1, 1, 1],
 			)
 			expect(mockCacheManager.updateHash).toHaveBeenCalledTimes(3)
-			vi.mocked(vscode.workspace.getConfiguration).mockReset()
 		})
 
 		it("does not write storage or cache when no vector store is supplied", async () => {
