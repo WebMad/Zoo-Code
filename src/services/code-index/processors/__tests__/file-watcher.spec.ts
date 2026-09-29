@@ -215,6 +215,129 @@ describe("FileWatcher", () => {
 		}
 	})
 
+	describe("event batching", () => {
+		it("cancels pending work when disposed before the debounce window ends", async () => {
+			await fileWatcher.initialize()
+			const started = vi.fn()
+			const progress = vi.fn()
+			const finished = vi.fn()
+			fileWatcher.onDidStartBatchProcessing(started)
+			fileWatcher.onBatchProgressUpdate(progress)
+			fileWatcher.onDidFinishBatchProcessing(finished)
+
+			await mockOnDidCreate(vscode.Uri.file("/mock/workspace/src/created.ts"))
+			await mockOnDidDelete(vscode.Uri.file("/mock/workspace/src/deleted.ts"))
+			await vi.advanceTimersByTimeAsync(499)
+			fileWatcher.dispose()
+			await vi.advanceTimersByTimeAsync(1000)
+
+			expect(mockWatcher.dispose).toHaveBeenCalledTimes(1)
+			expect(started).not.toHaveBeenCalled()
+			expect(progress).not.toHaveBeenCalled()
+			expect(finished).not.toHaveBeenCalled()
+			expect(vscode.workspace.fs.readFile).not.toHaveBeenCalled()
+			expect(mockVectorStore.deletePointsByMultipleFilePaths).not.toHaveBeenCalled()
+			expect(mockVectorStore.upsertPoints).not.toHaveBeenCalled()
+			expect(mockCacheManager.deleteHash).not.toHaveBeenCalled()
+			expect(mockCacheManager.updateHash).not.toHaveBeenCalled()
+		})
+
+		it("keeps events received during processing in a separate batch without replaying the first batch", async () => {
+			await fileWatcher.initialize()
+			const firstPath = "/mock/workspace/src/first.ts"
+			const nextPath = "/mock/workspace/src/next.ts"
+			let releaseDeletion!: () => void
+			mockVectorStore.deletePointsByMultipleFilePaths.mockImplementationOnce(
+				() =>
+					new Promise<void>((resolve) => {
+						releaseDeletion = resolve
+					}),
+			)
+			const started = vi.fn()
+			const finished = vi.fn()
+			fileWatcher.onDidStartBatchProcessing(started)
+			fileWatcher.onDidFinishBatchProcessing(finished)
+			const firstSummary = waitForNextBatch()
+
+			await mockOnDidDelete(vscode.Uri.file(firstPath))
+			await flushBatch()
+			expect(started).toHaveBeenCalledExactlyOnceWith([firstPath])
+			expect(finished).not.toHaveBeenCalled()
+
+			await mockOnDidDelete(vscode.Uri.file(nextPath))
+			releaseDeletion()
+			expect(await firstSummary).toEqual({
+				processedFiles: [{ path: firstPath, status: "success" }],
+				batchError: undefined,
+			})
+			expect(started).toHaveBeenCalledTimes(1)
+
+			await flushBatch()
+			expect(started.mock.calls).toEqual([[[firstPath]], [[nextPath]]])
+			expect(finished).toHaveBeenCalledTimes(2)
+			expect(finished).toHaveBeenLastCalledWith({
+				processedFiles: [{ path: nextPath, status: "success" }],
+				batchError: undefined,
+			})
+			expect(mockVectorStore.deletePointsByMultipleFilePaths.mock.calls).toEqual([[[firstPath]], [[nextPath]]])
+			await flushBatch()
+			expect(started).toHaveBeenCalledTimes(2)
+		})
+
+		it("waits 500 ms after the latest event and includes distinct paths in one batch", async () => {
+			await fileWatcher.initialize()
+			const firstPath = "/mock/workspace/src/first.ts"
+			const secondPath = "/mock/workspace/src/second.ts"
+			const started = vi.fn()
+			const finished = vi.fn()
+			fileWatcher.onDidStartBatchProcessing(started)
+			fileWatcher.onDidFinishBatchProcessing(finished)
+
+			await mockOnDidDelete(vscode.Uri.file(firstPath))
+			await vi.advanceTimersByTimeAsync(400)
+			await mockOnDidDelete(vscode.Uri.file(secondPath))
+			await vi.advanceTimersByTimeAsync(499)
+			expect(started).not.toHaveBeenCalled()
+			expect(finished).not.toHaveBeenCalled()
+			expect(mockVectorStore.deletePointsByMultipleFilePaths).not.toHaveBeenCalled()
+
+			await vi.advanceTimersByTimeAsync(1)
+			expect(started).toHaveBeenCalledExactlyOnceWith([firstPath, secondPath])
+			expect(mockVectorStore.deletePointsByMultipleFilePaths).toHaveBeenCalledExactlyOnceWith([
+				firstPath,
+				secondPath,
+			])
+			expect(finished).toHaveBeenCalledExactlyOnceWith({
+				processedFiles: [
+					{ path: firstPath, status: "success" },
+					{ path: secondPath, status: "success" },
+				],
+				batchError: undefined,
+			})
+		})
+
+		it("keeps only the final delete when a path is created, changed and deleted within the debounce window", async () => {
+			await fileWatcher.initialize()
+			const path = "/mock/workspace/src/file.ts"
+			const uri = vscode.Uri.file(path)
+			const started = vi.fn()
+			fileWatcher.onDidStartBatchProcessing(started)
+			const summary = waitForNextBatch()
+
+			await mockOnDidCreate(uri)
+			await mockOnDidChange(uri)
+			await mockOnDidDelete(uri)
+			await flushBatch()
+
+			expect(started).toHaveBeenCalledExactlyOnceWith([path])
+			expect(await summary).toEqual({ processedFiles: [{ path, status: "success" }], batchError: undefined })
+			expect(mockVectorStore.deletePointsByMultipleFilePaths).toHaveBeenCalledExactlyOnceWith([path])
+			expect(mockCacheManager.deleteHash).toHaveBeenCalledExactlyOnceWith(path)
+			expect(vscode.workspace.fs.readFile).not.toHaveBeenCalled()
+			expect(mockVectorStore.upsertPoints).not.toHaveBeenCalled()
+		})
+	})
+
 	describe("file filtering", () => {
 		it("should ignore files in hidden directories on create events", async () => {
 			// Initialize the file watcher

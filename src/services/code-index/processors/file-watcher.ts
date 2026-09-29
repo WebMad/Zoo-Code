@@ -13,6 +13,8 @@ import {
 } from "../interfaces"
 import { codeParser } from "./parser"
 import { FilePreparation } from "./file-preparation"
+import { FileEventAccumulator } from "./file-event-accumulator"
+import type { FileWatcherEvent } from "../interfaces/file-watcher-event"
 import { CacheManager } from "../cache-manager"
 import { TelemetryService } from "@roo-code/telemetry"
 import { TelemetryEventName } from "@roo-code/types"
@@ -27,9 +29,9 @@ export class FileWatcher implements IFileWatcher {
 	private ignoreInstance?: Ignore
 	private fileWatcher?: vscode.FileSystemWatcher
 	private ignoreController: RooIgnoreController
-	private accumulatedEvents: Map<string, { uri: vscode.Uri; type: "create" | "change" | "delete" }> = new Map()
-	private batchProcessDebounceTimer?: NodeJS.Timeout
-	private readonly BATCH_DEBOUNCE_DELAY_MS = 500
+	private readonly eventAccumulator = new FileEventAccumulator((events) => {
+		void this.triggerBatchProcessing(events)
+	})
 	private readonly FILE_PROCESSING_CONCURRENCY_LIMIT = 10
 	private readonly batchSegmentThreshold: number
 
@@ -115,9 +117,9 @@ export class FileWatcher implements IFileWatcher {
 		this.fileWatcher = vscode.workspace.createFileSystemWatcher(filePattern)
 
 		// Register event handlers
-		this.fileWatcher.onDidCreate(this.handleFileCreated.bind(this))
-		this.fileWatcher.onDidChange(this.handleFileChanged.bind(this))
-		this.fileWatcher.onDidDelete(this.handleFileDeleted.bind(this))
+		this.fileWatcher.onDidCreate((uri) => this.eventAccumulator.add({ uri, type: "create" }))
+		this.fileWatcher.onDidChange((uri) => this.eventAccumulator.add({ uri, type: "change" }))
+		this.fileWatcher.onDidDelete((uri) => this.eventAccumulator.add({ uri, type: "delete" }))
 	}
 
 	/**
@@ -125,63 +127,16 @@ export class FileWatcher implements IFileWatcher {
 	 */
 	dispose(): void {
 		this.fileWatcher?.dispose()
-		if (this.batchProcessDebounceTimer) {
-			clearTimeout(this.batchProcessDebounceTimer)
-		}
+		this.eventAccumulator.dispose()
 		this._onDidStartBatchProcessing.dispose()
 		this._onBatchProgressUpdate.dispose()
 		this._onDidFinishBatchProcessing.dispose()
-		this.accumulatedEvents.clear()
-	}
-
-	/**
-	 * Handles file creation events
-	 * @param uri URI of the created file
-	 */
-	private async handleFileCreated(uri: vscode.Uri): Promise<void> {
-		this.accumulatedEvents.set(uri.fsPath, { uri, type: "create" })
-		this.scheduleBatchProcessing()
-	}
-
-	/**
-	 * Handles file change events
-	 * @param uri URI of the changed file
-	 */
-	private async handleFileChanged(uri: vscode.Uri): Promise<void> {
-		this.accumulatedEvents.set(uri.fsPath, { uri, type: "change" })
-		this.scheduleBatchProcessing()
-	}
-
-	/**
-	 * Handles file deletion events
-	 * @param uri URI of the deleted file
-	 */
-	private async handleFileDeleted(uri: vscode.Uri): Promise<void> {
-		this.accumulatedEvents.set(uri.fsPath, { uri, type: "delete" })
-		this.scheduleBatchProcessing()
-	}
-
-	/**
-	 * Schedules batch processing with debounce
-	 */
-	private scheduleBatchProcessing(): void {
-		if (this.batchProcessDebounceTimer) {
-			clearTimeout(this.batchProcessDebounceTimer)
-		}
-		this.batchProcessDebounceTimer = setTimeout(() => this.triggerBatchProcessing(), this.BATCH_DEBOUNCE_DELAY_MS)
 	}
 
 	/**
 	 * Triggers processing of accumulated events
 	 */
-	private async triggerBatchProcessing(): Promise<void> {
-		if (this.accumulatedEvents.size === 0) {
-			return
-		}
-
-		const eventsToProcess = new Map(this.accumulatedEvents)
-		this.accumulatedEvents.clear()
-
+	private async triggerBatchProcessing(eventsToProcess: Map<string, FileWatcherEvent>): Promise<void> {
 		const filePathsInBatch = Array.from(eventsToProcess.keys())
 		this._onDidStartBatchProcessing.fire(filePathsInBatch)
 
@@ -419,9 +374,7 @@ export class FileWatcher implements IFileWatcher {
 		return overallBatchError
 	}
 
-	private async processBatch(
-		eventsToProcess: Map<string, { uri: vscode.Uri; type: "create" | "change" | "delete" }>,
-	): Promise<void> {
+	private async processBatch(eventsToProcess: Map<string, FileWatcherEvent>): Promise<void> {
 		const batchResults: FileProcessingResult[] = []
 		let processedCountInBatch = 0
 		const totalFilesInBatch = eventsToProcess.size
@@ -493,7 +446,7 @@ export class FileWatcher implements IFileWatcher {
 			totalInBatch: totalFilesInBatch,
 		})
 
-		if (this.accumulatedEvents.size === 0) {
+		if (!this.eventAccumulator.hasPendingEvents) {
 			this._onBatchProgressUpdate.fire({
 				processedInBatch: 0,
 				totalInBatch: 0,
