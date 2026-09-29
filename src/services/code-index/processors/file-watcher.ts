@@ -30,9 +30,8 @@ export class FileWatcher implements IFileWatcher {
 	private ignoreInstance?: Ignore
 	private fileSystemWatcher?: vscode.FileSystemWatcher
 	private ignoreController: RooIgnoreController
-	private readonly eventAccumulator = new FileEventAccumulator((events) => {
-		void this.triggerBatchProcessing(events)
-	})
+	private readonly eventAccumulator: FileEventAccumulator
+	private batchReadySubscription?: vscode.Disposable
 	private readonly FILE_PROCESSING_CONCURRENCY_LIMIT = 10
 	private readonly batchSegmentThreshold: number
 
@@ -77,6 +76,7 @@ export class FileWatcher implements IFileWatcher {
 		ignoreController?: RooIgnoreController,
 		batchSegmentThreshold?: number,
 	) {
+		this.eventAccumulator = new FileEventAccumulator()
 		this.ignoreController = ignoreController || new RooIgnoreController(workspacePath)
 		if (ignoreInstance) {
 			this.ignoreInstance = ignoreInstance
@@ -110,6 +110,8 @@ export class FileWatcher implements IFileWatcher {
 	 * Initializes the file watcher
 	 */
 	async initialize(): Promise<void> {
+		this.batchReadySubscription?.dispose()
+		this.batchReadySubscription = this.eventAccumulator.onBatchReady(this.triggerBatchProcessing, this)
 		// Create file watcher
 		const filePattern = new vscode.RelativePattern(
 			this.workspacePath,
@@ -128,6 +130,7 @@ export class FileWatcher implements IFileWatcher {
 	 */
 	dispose(): void {
 		this.fileSystemWatcher?.dispose()
+		this.batchReadySubscription?.dispose()
 		this.eventAccumulator.dispose()
 		this._onDidStartBatchProcessing.dispose()
 		this._onBatchProgressUpdate.dispose()

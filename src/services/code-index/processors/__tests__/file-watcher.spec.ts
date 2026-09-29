@@ -45,10 +45,11 @@ const createMockEventEmitter = () => {
 	const listeners = new Set<(event: any) => void>()
 
 	return {
-		event: vi.fn((listener: (event: any) => void) => {
-			listeners.add(listener)
+		event: vi.fn((listener: (event: unknown) => void, thisArgs?: unknown) => {
+			const boundListener = (event: unknown) => listener.call(thisArgs, event)
+			listeners.add(boundListener)
 			return {
-				dispose: () => listeners.delete(listener),
+				dispose: () => listeners.delete(boundListener),
 			}
 		}),
 		fire: vi.fn((event: any) => {
