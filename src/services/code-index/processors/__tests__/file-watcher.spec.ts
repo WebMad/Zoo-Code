@@ -4,6 +4,8 @@ import * as vscode from "vscode"
 
 import { FileWatcher } from "../file-watcher"
 import { FilePreparation } from "../file-preparation"
+import { INITIAL_RETRY_DELAY_MS, MAX_BATCH_RETRIES } from "../../constants"
+import type { FileProcessingResult } from "../../interfaces"
 
 import { clearAllMocks } from "../../../../test-utils/reset"
 
@@ -63,6 +65,7 @@ const createMockEventEmitter = () => {
 // Mock vscode module
 vi.mock("vscode", () => ({
 	workspace: {
+		getConfiguration: vi.fn(),
 		createFileSystemWatcher: vi.fn(),
 		workspaceFolders: [
 			{
@@ -216,6 +219,275 @@ describe("FileWatcher", () => {
 	})
 
 	describe("event batching", () => {
+		it("leaves all hashes unchanged when a later point chunk exhausts retries", async () => {
+			fileWatcher.dispose()
+			fileWatcher = new FileWatcher(
+				"/mock/workspace",
+				mockContext,
+				mockCacheManager,
+				mockEmbedder,
+				mockVectorStore,
+				undefined,
+				undefined,
+				1,
+			)
+			await fileWatcher.initialize()
+			const paths = ["/mock/workspace/a.ts", "/mock/workspace/b.ts"]
+			mockVectorStore.upsertPoints
+				.mockResolvedValueOnce(undefined)
+				.mockRejectedValue(new Error("second chunk failed"))
+			const summary = waitForNextBatch()
+			for (const path of paths) await mockOnDidCreate(vscode.Uri.file(path))
+			await flushBatch()
+			await vi.runAllTimersAsync()
+			expect(mockVectorStore.upsertPoints).toHaveBeenCalledTimes(1 + MAX_BATCH_RETRIES)
+			expect(await summary).toEqual({
+				processedFiles: paths.map((path) => ({ path, status: "error", error: expect.any(Error) })),
+				batchError: expect.any(Error),
+			})
+			expect(mockCacheManager.updateHash).not.toHaveBeenCalled()
+		})
+
+		it("allows an in-flight storage write to finish after disposal without publishing more events", async () => {
+			await fileWatcher.initialize()
+			let finishWrite!: () => void
+			mockVectorStore.upsertPoints.mockImplementationOnce(
+				() =>
+					new Promise<void>((resolve) => {
+						finishWrite = resolve
+					}),
+			)
+			const path = "/mock/workspace/file.ts"
+			const progress = vi.fn()
+			const finished = vi.fn()
+			fileWatcher.onBatchProgressUpdate(progress)
+			fileWatcher.onDidFinishBatchProcessing(finished)
+			await mockOnDidCreate(vscode.Uri.file(path))
+			await flushBatch()
+			expect(mockVectorStore.upsertPoints).toHaveBeenCalledTimes(1)
+			expect(mockCacheManager.updateHash).not.toHaveBeenCalled()
+			fileWatcher.dispose()
+			progress.mockClear()
+			finishWrite()
+			await vi.advanceTimersByTimeAsync(0)
+			// Disposal stops notifications, not storage work already in flight.
+			expect(mockCacheManager.updateHash).toHaveBeenCalledExactlyOnceWith(path, expect.any(String))
+			expect(progress).not.toHaveBeenCalled()
+			expect(finished).not.toHaveBeenCalled()
+		})
+
+		it.each([{ status: 503 }, { response: { status: 502 } }, { statusCode: 500 }, "storage unavailable"])(
+			"blocks prepared upserts after deletion fails with %j",
+			async (error) => {
+				await fileWatcher.initialize()
+				const path = "/mock/workspace/src/file.ts"
+				mockVectorStore.deletePointsByMultipleFilePaths.mockRejectedValueOnce(error)
+				const summary = waitForNextBatch()
+				await mockOnDidChange(vscode.Uri.file(path))
+				await flushBatch()
+				expect(await summary).toEqual({ processedFiles: [{ path, status: "error", error }], batchError: error })
+				expect(mockVectorStore.upsertPoints).not.toHaveBeenCalled()
+				expect(mockCacheManager.updateHash).not.toHaveBeenCalled()
+			},
+		)
+
+		it("reports a rejection without an error value as a missing preparation result", async () => {
+			await fileWatcher.initialize()
+			const path = "/mock/workspace/src/file.ts"
+			const prepare = vi.spyOn(fileWatcher, "processFile").mockRejectedValue(undefined)
+			const summary = waitForNextBatch()
+			await mockOnDidCreate(vscode.Uri.file(path))
+			await flushBatch()
+			expect(await summary).toEqual({
+				processedFiles: [
+					{
+						path,
+						status: "error",
+						error: expect.objectContaining({
+							message: `Fulfilled promise with no result or error for file ${path}`,
+						}),
+					},
+				],
+				batchError: undefined,
+			})
+			prepare.mockRestore()
+		})
+
+		it.each(["explicit", "configuration"])("splits point writes using the %s batch size", async (source) => {
+			fileWatcher.dispose()
+			const configuration = { get: vi.fn().mockReturnValue(1), has: vi.fn(), inspect: vi.fn(), update: vi.fn() }
+			vi.mocked(vscode.workspace.getConfiguration).mockReturnValue(configuration)
+			fileWatcher = new FileWatcher(
+				"/mock/workspace",
+				mockContext,
+				mockCacheManager,
+				mockEmbedder,
+				mockVectorStore,
+				undefined,
+				undefined,
+				source === "explicit" ? 2 : undefined,
+			)
+			await fileWatcher.initialize()
+			const paths = ["a", "b", "c"].map((name) => `/mock/workspace/${name}.ts`)
+			const summary = waitForNextBatch()
+			for (const path of paths) await mockOnDidCreate(vscode.Uri.file(path))
+			await flushBatch()
+			expect(await summary).toEqual({
+				processedFiles: paths.map((path) => ({ path, status: "success" })),
+				batchError: undefined,
+			})
+			expect(mockVectorStore.upsertPoints.mock.calls.map(([points]: [unknown[]]) => points.length)).toEqual(
+				source === "explicit" ? [2, 1] : [1, 1, 1],
+			)
+			expect(mockCacheManager.updateHash).toHaveBeenCalledTimes(3)
+			vi.mocked(vscode.workspace.getConfiguration).mockReset()
+		})
+
+		it("does not write storage or cache when no vector store is supplied", async () => {
+			fileWatcher.dispose()
+			fileWatcher = new FileWatcher("/mock/workspace", mockContext, mockCacheManager, mockEmbedder)
+			await fileWatcher.initialize()
+			const summary = waitForNextBatch()
+			await mockOnDidCreate(vscode.Uri.file("/mock/workspace/created.ts"))
+			await mockOnDidDelete(vscode.Uri.file("/mock/workspace/deleted.ts"))
+			await flushBatch()
+			expect(await summary).toEqual({ processedFiles: [], batchError: undefined })
+			expect(mockCacheManager.updateHash).not.toHaveBeenCalled()
+			expect(mockCacheManager.deleteHash).not.toHaveBeenCalled()
+			expect(mockVectorStore.upsertPoints).not.toHaveBeenCalled()
+		})
+
+		it.each(["local_error", "throw", "unexpected", "missing_points", "empty_points", "no_hash", "empty_path"])(
+			"reports the preparation outcome %s without losing batch completion",
+			async (outcome) => {
+				await fileWatcher.initialize()
+				const path = "/mock/workspace/src/file.ts"
+				const error = new Error("preparation failed")
+				const prepared = await fileWatcher.processFile(path)
+				const prepare = vi.spyOn(fileWatcher, "processFile")
+				if (outcome === "throw") prepare.mockRejectedValue(error)
+				else {
+					const results: Record<string, FileProcessingResult> = {
+						local_error: { path, status: "local_error", error },
+						unexpected: { path, status: "success" },
+						missing_points: { path, status: "processed_for_batching" },
+						empty_points: { path, status: "processed_for_batching", pointsToUpsert: [] },
+						no_hash: { ...prepared, newHash: undefined },
+						empty_path: { ...prepared, path: "" },
+					}
+					prepare.mockResolvedValue(results[outcome])
+				}
+				const summary = waitForNextBatch()
+				await mockOnDidCreate(vscode.Uri.file(path))
+				await flushBatch()
+				const status = outcome === "local_error" ? "local_error" : outcome === "no_hash" ? "success" : "error"
+				expect(await summary).toEqual({
+					processedFiles:
+						outcome === "empty_points" || outcome === "empty_path"
+							? []
+							: [outcome === "no_hash" ? { path, status } : { path, status, error: expect.any(Error) }],
+					batchError: undefined,
+				})
+				expect(mockCacheManager.updateHash).not.toHaveBeenCalled()
+				if (outcome !== "no_hash" && outcome !== "empty_path")
+					expect(mockVectorStore.upsertPoints).not.toHaveBeenCalled()
+				else expect(mockVectorStore.upsertPoints).toHaveBeenCalledExactlyOnceWith(prepared.pointsToUpsert)
+				prepare.mockRestore()
+			},
+		)
+
+		it.each(["recovery", "exhaustion"])(
+			"preserves cached hashes until upsert retry %s is resolved",
+			async (outcome) => {
+				await fileWatcher.initialize()
+				const path = "/mock/workspace/src/file.ts"
+				const error = new Error("upsert unavailable")
+				if (outcome === "recovery") mockVectorStore.upsertPoints.mockRejectedValueOnce(error)
+				else mockVectorStore.upsertPoints.mockRejectedValue(error)
+				const finished = vi.fn()
+				fileWatcher.onDidFinishBatchProcessing(finished)
+				await mockOnDidCreate(vscode.Uri.file(path))
+				await flushBatch()
+				expect(mockVectorStore.upsertPoints).toHaveBeenCalledTimes(1)
+				expect(mockCacheManager.updateHash).not.toHaveBeenCalled()
+				expect(finished).not.toHaveBeenCalled()
+				const attempts = outcome === "recovery" ? 2 : MAX_BATCH_RETRIES
+				for (let attempt = 1; attempt < attempts; attempt++) {
+					await vi.advanceTimersByTimeAsync(INITIAL_RETRY_DELAY_MS * 2 ** (attempt - 1) - 1)
+					expect(mockVectorStore.upsertPoints).toHaveBeenCalledTimes(attempt)
+					expect(mockCacheManager.updateHash).not.toHaveBeenCalled()
+					await vi.advanceTimersByTimeAsync(1)
+				}
+				expect(mockVectorStore.upsertPoints).toHaveBeenCalledTimes(attempts)
+				if (outcome === "recovery") {
+					expect(finished).toHaveBeenCalledExactlyOnceWith({
+						processedFiles: [{ path, status: "success" }],
+						batchError: undefined,
+					})
+					expect(mockCacheManager.updateHash).toHaveBeenCalledExactlyOnceWith(path, expect.any(String))
+				} else {
+					expect(finished).toHaveBeenCalledExactlyOnceWith({
+						processedFiles: [{ path, status: "error", error: expect.any(Error) }],
+						batchError: expect.objectContaining({ message: expect.stringContaining("upsert unavailable") }),
+					})
+					expect(mockCacheManager.updateHash).not.toHaveBeenCalled()
+				}
+			},
+		)
+
+		it("reports deletion failure without removing cached hashes and processes subsequent events", async () => {
+			await fileWatcher.initialize()
+			const path = "/mock/workspace/src/file.ts"
+			const error = new Error("storage unavailable")
+			mockVectorStore.deletePointsByMultipleFilePaths.mockRejectedValueOnce(error)
+			const failed = waitForNextBatch()
+			await mockOnDidDelete(vscode.Uri.file(path))
+			await flushBatch()
+			expect(await failed).toEqual({
+				processedFiles: [{ path, status: "error", error }],
+				batchError: error,
+			})
+			expect(mockCacheManager.deleteHash).not.toHaveBeenCalled()
+			const recovered = waitForNextBatch()
+			await mockOnDidDelete(vscode.Uri.file(path))
+			await flushBatch()
+			expect(await recovered).toEqual({ processedFiles: [{ path, status: "success" }], batchError: undefined })
+			expect(mockCacheManager.deleteHash).toHaveBeenCalledExactlyOnceWith(path)
+		})
+
+		it("starts a later batch while earlier storage work is pending and keeps their results separate", async () => {
+			await fileWatcher.initialize()
+			const firstPath = "/mock/workspace/src/first.ts"
+			const secondPath = "/mock/workspace/src/second.ts"
+			let releaseDeletion!: () => void
+			mockVectorStore.deletePointsByMultipleFilePaths.mockImplementationOnce(
+				() =>
+					new Promise<void>((resolve) => {
+						releaseDeletion = resolve
+					}),
+			)
+			const started = vi.fn()
+			const finished = vi.fn()
+			fileWatcher.onDidStartBatchProcessing(started)
+			fileWatcher.onDidFinishBatchProcessing(finished)
+			await mockOnDidDelete(vscode.Uri.file(firstPath))
+			await flushBatch()
+			await mockOnDidDelete(vscode.Uri.file(secondPath))
+			await flushBatch()
+			expect(started.mock.calls).toEqual([[[firstPath]], [[secondPath]]])
+			expect(finished).toHaveBeenCalledExactlyOnceWith({
+				processedFiles: [{ path: secondPath, status: "success" }],
+				batchError: undefined,
+			})
+			const firstSummary = waitForNextBatch()
+			releaseDeletion()
+			expect(await firstSummary).toEqual({
+				processedFiles: [{ path: firstPath, status: "success" }],
+				batchError: undefined,
+			})
+			expect(finished).toHaveBeenCalledTimes(2)
+		})
+
 		it("cancels pending work when disposed before the debounce window ends", async () => {
 			await fileWatcher.initialize()
 			const started = vi.fn()

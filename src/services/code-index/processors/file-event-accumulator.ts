@@ -28,7 +28,6 @@ export class FileEventAccumulator {
 
 	private flush(): void {
 		this.timer = undefined
-		if (!this.hasPendingEvents) return
 		const batch = new Map(this.events)
 		this.events.clear()
 		// Detach pending events before delivery; do not serialize or await batch execution.
