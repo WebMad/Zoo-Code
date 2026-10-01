@@ -474,63 +474,24 @@ describe("CodeIndexManager - handleSettingsChange regression", () => {
 			;(manager as any)._configManager = mockConfigManager
 		})
 
-		it("should validate embedder during _recreateServices when validation succeeds", async () => {
-			// Arrange
-			mockServiceFactoryInstance.validateEmbedder.mockResolvedValue({ valid: true })
+		it("should create indexing services without waiting for startup embedder validation", async () => {
+			let finishValidation!: (result: { valid: boolean; error?: string }) => void
+			mockServiceFactoryInstance.validateEmbedder.mockReturnValue(
+				new Promise((resolve) => {
+					finishValidation = resolve
+				}),
+			)
 
-			// Act - directly call the private method for testing
 			await (manager as any)._recreateServices()
 
-			// Assert
 			expect(mockServiceFactoryInstance.createServices).toHaveBeenCalled()
-			const createdEmbedder = mockServiceFactoryInstance.createServices.mock.results[0].value.embedder
-			expect(mockServiceFactoryInstance.validateEmbedder).toHaveBeenCalledWith(createdEmbedder)
+			expect(mockServiceFactoryInstance.validateEmbedder).toHaveBeenCalledWith(mockEmbedder)
 			expect(mockStateManager.setSystemState).not.toHaveBeenCalledWith("Error", expect.any(String))
-		})
+			expect((manager as any)._orchestrator).toBeDefined()
+			expect((manager as any)._searchService).toBeDefined()
 
-		it("should set error state when embedder validation fails", async () => {
-			// Arrange
-			mockServiceFactoryInstance.validateEmbedder.mockResolvedValue({
-				valid: false,
-				error: "embeddings:validation.authenticationFailed",
-			})
-
-			// Act & Assert
-			await expect((manager as any)._recreateServices()).rejects.toThrow(
-				"embeddings:validation.authenticationFailed",
-			)
-
-			// Assert other expectations
-			expect(mockServiceFactoryInstance.createServices).toHaveBeenCalled()
-			const createdEmbedder = mockServiceFactoryInstance.createServices.mock.results[0].value.embedder
-			expect(mockServiceFactoryInstance.validateEmbedder).toHaveBeenCalledWith(createdEmbedder)
-			expect(mockStateManager.setSystemState).toHaveBeenCalledWith(
-				"Error",
-				"embeddings:validation.authenticationFailed",
-			)
-		})
-
-		it("should set generic error state when embedder validation throws", async () => {
-			// Arrange
-			// Since the real service factory catches exceptions, we should mock it to resolve with an error
-			mockServiceFactoryInstance.validateEmbedder.mockResolvedValue({
-				valid: false,
-				error: "embeddings:validation.configurationError",
-			})
-
-			// Act & Assert
-			await expect((manager as any)._recreateServices()).rejects.toThrow(
-				"embeddings:validation.configurationError",
-			)
-
-			// Assert other expectations
-			expect(mockServiceFactoryInstance.createServices).toHaveBeenCalled()
-			const createdEmbedder = mockServiceFactoryInstance.createServices.mock.results[0].value.embedder
-			expect(mockServiceFactoryInstance.validateEmbedder).toHaveBeenCalledWith(createdEmbedder)
-			expect(mockStateManager.setSystemState).toHaveBeenCalledWith(
-				"Error",
-				"embeddings:validation.configurationError",
-			)
+			finishValidation({ valid: true })
+			await Promise.resolve()
 		})
 
 		it("should handle embedder creation failure", async () => {
