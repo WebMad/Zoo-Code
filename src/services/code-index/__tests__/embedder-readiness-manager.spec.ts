@@ -33,6 +33,30 @@ describe("EmbedderReadinessManager", () => {
 		expect(stateManager.setSystemState).toHaveBeenCalledExactlyOnceWith("Error", "Current validation failure")
 	})
 
+	it.each([undefined, ""])("uses the fallback for a validation failure with message %j", async (error) => {
+		const { stateManager, manager, serviceFactory, embedder } = setup()
+		vi.mocked(serviceFactory.validateEmbedder).mockResolvedValue({ valid: false, error })
+
+		await manager.validate(serviceFactory, embedder)
+
+		expect(stateManager.setSystemState).toHaveBeenCalledExactlyOnceWith(
+			"Error",
+			"Embedder configuration validation failed",
+		)
+	})
+
+	it("uses the fallback for a non-Error rejection", async () => {
+		const { stateManager, manager, serviceFactory, embedder } = setup()
+		vi.mocked(serviceFactory.validateEmbedder).mockRejectedValue("Unexpected rejection")
+
+		await expect(manager.validate(serviceFactory, embedder)).resolves.toBeUndefined()
+
+		expect(stateManager.setSystemState).toHaveBeenCalledExactlyOnceWith(
+			"Error",
+			"Embedder configuration validation failed",
+		)
+	})
+
 	it("reports an unexpected validation rejection while the manager remains in standby", async () => {
 		const { stateManager, manager, serviceFactory, embedder } = setup()
 		vi.mocked(serviceFactory.validateEmbedder).mockRejectedValue(new Error("Validation crashed"))
