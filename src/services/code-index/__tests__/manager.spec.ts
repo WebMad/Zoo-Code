@@ -3,6 +3,8 @@ import { makeExtensionContext } from "../../../test-utils/vscode"
 import { CodeIndexManager } from "../manager"
 import { CodeIndexManagerRegistry } from "../code-index-manager-registry"
 import { CodeIndexServiceFactory } from "../service-factory"
+import { CodeIndexOrchestrator } from "../orchestrator"
+import { CodeIndexSearchService } from "../search-service"
 import type { MockedClass } from "vitest"
 import * as path from "path"
 import { providerIdentifiers } from "@roo-code/types/provider-identifiers"
@@ -482,13 +484,13 @@ describe("CodeIndexManager - handleSettingsChange regression", () => {
 				}),
 			)
 
-			await (manager as any)._recreateServices()
+			await manager["_recreateServices"]()
 
 			expect(mockServiceFactoryInstance.createServices).toHaveBeenCalled()
 			expect(mockServiceFactoryInstance.validateEmbedder).toHaveBeenCalledWith(mockEmbedder)
 			expect(mockStateManager.setSystemState).not.toHaveBeenCalledWith("Error", expect.any(String))
-			expect((manager as any)._orchestrator).toBeDefined()
-			expect((manager as any)._searchService).toBeDefined()
+			expect(manager["_orchestrator"]).toBeInstanceOf(CodeIndexOrchestrator)
+			expect(manager["_searchService"]).toBeInstanceOf(CodeIndexSearchService)
 
 			finishValidation({ valid: true })
 			await Promise.resolve()

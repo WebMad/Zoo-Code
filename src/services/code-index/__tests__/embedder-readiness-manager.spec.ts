@@ -81,6 +81,33 @@ describe("EmbedderReadinessManager", () => {
 		expect(stateManager.setSystemState).not.toHaveBeenCalled()
 	})
 
+	it.each(["invalidation", "newer validation", "status change"] as const)(
+		"ignores a pending rejection after %s",
+		async (scenario) => {
+			const { stateManager, manager, serviceFactory, embedder } = setup()
+			let rejectValidation!: (error: Error) => void
+			vi.mocked(serviceFactory.validateEmbedder).mockReturnValueOnce(
+				new Promise((_, reject) => {
+					rejectValidation = reject
+				}),
+			)
+			const validation = manager.validate(serviceFactory, embedder)
+
+			if (scenario === "invalidation") {
+				manager.invalidate()
+			} else if (scenario === "newer validation") {
+				vi.mocked(serviceFactory.validateEmbedder).mockResolvedValueOnce({ valid: true })
+				await manager.validate(serviceFactory, embedder)
+			} else {
+				stateManager.state = "Indexed"
+			}
+
+			rejectValidation(new Error("Stale rejection"))
+			await expect(validation).resolves.toBeUndefined()
+			expect(stateManager.setSystemState).not.toHaveBeenCalled()
+		},
+	)
+
 	it("ignores a pending result after invalidation", async () => {
 		const { stateManager, manager, serviceFactory, embedder } = setup()
 		let finishValidation!: (result: { valid: boolean; error?: string }) => void
