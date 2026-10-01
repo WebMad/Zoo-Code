@@ -7,7 +7,6 @@ import { CodebaseSearchTool } from "../CodebaseSearchTool"
 import { CodeIndexManagerRegistry } from "../../../services/code-index/code-index-manager-registry"
 import { CodeIndexManager } from "../../../services/code-index/manager"
 import { CodeIndexStateManager } from "../../../services/code-index/state-manager"
-import { EmbedderReadinessManager } from "../../../services/code-index/embedder-readiness-manager"
 import { getWorkspacePath } from "../../../utils/path"
 import { makeExtensionContext, makeTextDocument, makeTextEditor, makeUri } from "../../../test-utils/vscode"
 
@@ -200,7 +199,6 @@ describe("CodebaseSearchTool workspace selection", () => {
 			expect.objectContaining({ fsPath: "/external-task" }),
 			provider.context,
 			expect.any(CodeIndexStateManager),
-			expect.any(EmbedderReadinessManager),
 		)
 		expect(vscode.Uri.file).toHaveBeenCalledExactlyOnceWith("/external-task")
 		const manager = CodeIndexManagerRegistry.getOrCreate(provider.context, "/external-task")!

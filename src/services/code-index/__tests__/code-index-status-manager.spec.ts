@@ -8,7 +8,6 @@ import {
 } from "../../../test-utils/vscode"
 import { CodeIndexManager } from "../manager"
 import { CodeIndexStateManager } from "../state-manager"
-import { EmbedderReadinessManager } from "../embedder-readiness-manager"
 import { CodeIndexStatusManager, type CodeIndexStatus } from "../code-index-status-manager"
 
 // Reload the real workspace resolver against this suite's VS Code mock,
@@ -41,13 +40,11 @@ function makeSource(workspacePath: string) {
 		emit = () => listener(status)
 		return subscription
 	}
-	const stateManager = new CodeIndexStateManager()
 	const manager = new CodeIndexManager(
 		workspacePath,
 		makeUri(workspacePath),
 		makeExtensionContext(),
-		stateManager,
-		new EmbedderReadinessManager(stateManager),
+		new CodeIndexStateManager(),
 	)
 	Object.defineProperty(manager, "onProgressUpdate", { value: vi.fn(event), configurable: true })
 	return Object.assign(manager, {

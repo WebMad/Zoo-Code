@@ -16,7 +16,6 @@ import path from "path"
 import { t } from "../../i18n"
 import { TelemetryService } from "@roo-code/telemetry"
 import { TelemetryEventName } from "@roo-code/types"
-import { EmbedderReadinessManager } from "./embedder-readiness-manager"
 
 export class CodeIndexManager {
 	// Specialized class instances
@@ -41,7 +40,6 @@ export class CodeIndexManager {
 		folderUri: vscode.Uri,
 		context: vscode.ExtensionContext,
 		stateManager: CodeIndexStateManager,
-		private readonly embedderReadinessManager: EmbedderReadinessManager,
 	) {
 		this.workspacePath = workspacePath
 		this._folderUri = folderUri
@@ -236,7 +234,6 @@ export class CodeIndexManager {
 	 * Stops any in-progress indexing operation and the file watcher.
 	 */
 	public stopIndexing(): void {
-		this.embedderReadinessManager.invalidate()
 		if (this._sembleProvider) {
 			this._sembleProvider.stopIndexing()
 			return
@@ -279,7 +276,6 @@ export class CodeIndexManager {
 		}
 
 		this._isRecoveringFromError = true
-		this.embedderReadinessManager.invalidate()
 		try {
 			// Clear error state
 			this._stateManager.setSystemState("Standby", "")
@@ -419,7 +415,6 @@ export class CodeIndexManager {
 			ignoreInstance,
 			rooIgnoreController,
 		)
-		void this.embedderReadinessManager.validate(this._serviceFactory, embedder)
 
 		// (Re)Initialize orchestrator
 		this._orchestrator = new CodeIndexOrchestrator(

@@ -476,24 +476,19 @@ describe("CodeIndexManager - handleSettingsChange regression", () => {
 			;(manager as any)._configManager = mockConfigManager
 		})
 
-		it("should create indexing services without waiting for startup embedder validation", async () => {
-			let finishValidation!: (result: { valid: boolean; error?: string }) => void
-			mockServiceFactoryInstance.validateEmbedder.mockReturnValue(
-				new Promise((resolve) => {
-					finishValidation = resolve
-				}),
-			)
+		it("should create indexing services without a startup embedder validation request", async () => {
+			mockServiceFactoryInstance.validateEmbedder.mockResolvedValue({
+				valid: false,
+				error: "Embedder unavailable",
+			})
 
 			await manager["_recreateServices"]()
 
 			expect(mockServiceFactoryInstance.createServices).toHaveBeenCalled()
-			expect(mockServiceFactoryInstance.validateEmbedder).toHaveBeenCalledWith(mockEmbedder)
+			expect(mockServiceFactoryInstance.validateEmbedder).not.toHaveBeenCalled()
 			expect(mockStateManager.setSystemState).not.toHaveBeenCalledWith("Error", expect.any(String))
 			expect(manager["_orchestrator"]).toBeInstanceOf(CodeIndexOrchestrator)
 			expect(manager["_searchService"]).toBeInstanceOf(CodeIndexSearchService)
-
-			finishValidation({ valid: true })
-			await Promise.resolve()
 		})
 
 		it("should handle embedder creation failure", async () => {
@@ -647,7 +642,7 @@ describe("CodeIndexManager - handleSettingsChange regression", () => {
 			// Assert - manager should be initialized again
 			expect(manager.isInitialized).toBe(true)
 			expect(mockServiceFactoryInstance.createServices).toHaveBeenCalled()
-			expect(mockServiceFactoryInstance.validateEmbedder).toHaveBeenCalled()
+			expect(mockServiceFactoryInstance.validateEmbedder).not.toHaveBeenCalled()
 		})
 
 		it("should be safe to call when not in error state (idempotent)", async () => {

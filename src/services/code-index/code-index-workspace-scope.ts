@@ -3,7 +3,6 @@ import type * as vscode from "vscode"
 import { CodeIndexManager } from "./manager"
 import { CodeIndexStateManager } from "./state-manager"
 import { WorkspaceIndexingEnablementManager } from "./workspace-indexing-enablement-manager"
-import { EmbedderReadinessManager } from "./embedder-readiness-manager"
 
 /** Owns code-index services for one workspace; initialization remains with existing callers. */
 export class CodeIndexWorkspaceScope implements vscode.Disposable {
@@ -39,13 +38,11 @@ export class CodeIndexWorkspaceScope implements vscode.Disposable {
 			throw new Error("Code index workspace scope is already initialized")
 		}
 		this._stateManager = new CodeIndexStateManager()
-		const embedderReadinessManager = new EmbedderReadinessManager(this._stateManager)
 		this._codeIndexManager = new CodeIndexManager(
 			this.workspacePath,
 			this.folderUri,
 			this.context,
 			this._stateManager,
-			embedderReadinessManager,
 		)
 		this._workspaceIndexingEnablementManager = new WorkspaceIndexingEnablementManager(this._codeIndexManager)
 		this._isInitialized = true
