@@ -2,6 +2,7 @@ import { makeExtensionContext, makeUri } from "../../../test-utils/vscode"
 import { CodeIndexManager } from "../manager"
 import { CodeIndexWorkspaceScope } from "../code-index-workspace-scope"
 import { CodeIndexStateManager } from "../state-manager"
+import { EmbedderReadinessManager } from "../embedder-readiness-manager"
 import { WorkspaceIndexingEnablementManager } from "../workspace-indexing-enablement-manager"
 
 vi.mock("../state-manager")
@@ -57,6 +58,7 @@ describe("CodeIndexWorkspaceScope", () => {
 			uri,
 			context,
 			vi.mocked(CodeIndexStateManager).mock.instances[0],
+			expect.any(EmbedderReadinessManager),
 		)
 		expect(scope.codeIndexManager).toBe(manager)
 		expect(() => scope.init()).toThrow("Code index workspace scope is already initialized")
@@ -98,6 +100,9 @@ describe("CodeIndexWorkspaceScope", () => {
 		const calls = vi.mocked(CodeIndexManager).mock.calls
 		expect(CodeIndexStateManager).toHaveBeenCalledTimes(2)
 		expect(calls[1][3]).not.toBe(calls[0][3])
+		expect(calls[1][4]).not.toBe(calls[0][4])
+		expect(calls[0][4]["stateManager"]).toBe(calls[0][3])
+		expect(calls[1][4]["stateManager"]).toBe(calls[1][3])
 		expect(scope["_stateManager"]).toBe(calls[1][3])
 	})
 
@@ -113,6 +118,9 @@ describe("CodeIndexWorkspaceScope", () => {
 		expect(calls[0][3]).toBe(vi.mocked(CodeIndexStateManager).mock.instances[0])
 		expect(calls[1][3]).toBe(vi.mocked(CodeIndexStateManager).mock.instances[1])
 		expect(calls[1][3]).not.toBe(calls[0][3])
+		expect(calls[1][4]).not.toBe(calls[0][4])
+		expect(calls[0][4]["stateManager"]).toBe(calls[0][3])
+		expect(calls[1][4]["stateManager"]).toBe(calls[1][3])
 	})
 
 	it("clears its reference even when manager disposal throws", () => {
