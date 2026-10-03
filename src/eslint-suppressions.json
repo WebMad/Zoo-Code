@@ -1306,7 +1306,7 @@
 	},
 	"services/code-index/__tests__/orchestrator.spec.ts": {
 		"@typescript-eslint/no-explicit-any": {
-			"count": 23
+			"count": 25
 		}
 	},
 	"services/code-index/__tests__/service-factory.spec.ts": {
