@@ -130,14 +130,13 @@ export class CodeIndexOrchestrator {
 		const signal = this._abortController.signal
 		this.stateManager.setSystemState("Indexing", "Initializing services...")
 
-		// Preserve data on connection failures and incremental updates; clean up failed rebuilds.
+		// Only clean up collections created by this run; existing data must survive failed retries.
 		let clearIndexOnError = false
 
 		try {
 			const collectionCreated = await this.vectorStore.initialize()
 
-			// Successfully connected to Qdrant
-			clearIndexOnError = true
+			clearIndexOnError = collectionCreated
 
 			if (collectionCreated) {
 				await this.cacheManager.clearCacheFile()
@@ -148,7 +147,6 @@ export class CodeIndexOrchestrator {
 			const hasExistingData = await this.vectorStore.hasIndexedData()
 
 			if (hasExistingData && !collectionCreated) {
-				clearIndexOnError = false
 				if (!(await this.scanExecutor.runIncrementalScan(signal))) {
 					await this.cacheManager.flush()
 					this.stopWatcher()
