@@ -42,8 +42,8 @@ vi.mock("@roo-code/telemetry", () => ({
 }))
 
 // Mock i18n translator used in orchestrator messages
-vi.mock("../../i18n", () => ({
-	t: (key: string, params?: any) => {
+vi.mock("../../../i18n", () => ({
+	t: (key: string, params?: { errorMessage?: string }) => {
 		if (key === "embeddings:orchestrator.failedDuringInitialScan" && params?.errorMessage) {
 			return `Failed during initial scan: ${params.errorMessage}`
 		}
@@ -259,36 +259,49 @@ describe("CodeIndexOrchestrator - error path cleanup gating", () => {
 		expect(calls[calls.length - 1]).toBe("Error")
 	})
 
-	it("collects batch errors from incremental scan and still completes indexing", async () => {
-		const batchError = new Error("incremental batch failure")
-		vectorStore.initialize.mockResolvedValue(false) // existing collection
-		vectorStore.hasIndexedData.mockResolvedValue(true) // force incremental scan path
-		vectorStore.markIndexingIncomplete.mockResolvedValue(undefined)
-		vectorStore.markIndexingComplete.mockResolvedValue(undefined)
+	it.each([0, 2])(
+		"preserves the existing index on incremental batch failure after %s indexed blocks",
+		async (indexed) => {
+			const batchError = new Error("incremental batch failure")
+			vectorStore.initialize.mockResolvedValue(false) // existing collection
+			vectorStore.hasIndexedData.mockResolvedValue(true) // force incremental scan path
+			vectorStore.markIndexingIncomplete.mockResolvedValue(undefined)
+			vectorStore.markIndexingComplete.mockResolvedValue(undefined)
 
-		// Incremental scan reports a batch error but returns a result — orchestrator completes normally
-		scanner.scanDirectory.mockImplementation(async (_dir: string, onBatchError: (e: Error) => void) => {
-			onBatchError(batchError)
-			return { stats: { processed: 0, skipped: 0 }, totalBlockCount: 0 }
-		})
+			scanner.scanDirectory.mockImplementation(
+				async (_dir: string, onBatchError: (e: Error) => void, onIndexed: (count: number) => void) => {
+					onIndexed(indexed)
+					onBatchError(batchError)
+					return { stats: { processed: 1, skipped: 0 }, totalBlockCount: 3 }
+				},
+			)
 
-		const orchestrator = new CodeIndexOrchestrator(
-			configManager,
-			stateManager,
-			workspacePath,
-			cacheManager,
-			vectorStore,
-			scanner,
-			fileWatcher,
-		)
+			const orchestrator = new CodeIndexOrchestrator(
+				configManager,
+				stateManager,
+				workspacePath,
+				cacheManager,
+				vectorStore,
+				scanner,
+				fileWatcher,
+			)
 
-		await orchestrator.startIndexing()
+			await orchestrator.startIndexing()
 
-		// Incremental scan doesn't gate on batch errors — Indexed state is still reached
-		const calls = stateManager.setSystemState.mock.calls.map((c: any[]) => c[0])
-		expect(calls[calls.length - 1]).toBe("Indexed")
-		expect(calls).not.toContain("Error")
-	})
+			expect(orchestrator.state).toBe("Error")
+			expect(stateManager.setSystemState).toHaveBeenLastCalledWith(
+				"Error",
+				expect.stringContaining(batchError.message),
+			)
+			expect(stateManager.setSystemState).not.toHaveBeenCalledWith("Indexed", expect.any(String))
+			expect(vectorStore.markIndexingIncomplete).toHaveBeenCalledOnce()
+			expect(vectorStore.markIndexingComplete).not.toHaveBeenCalled()
+			expect(vectorStore.clearCollection).not.toHaveBeenCalled()
+			expect(cacheManager.clearCacheFile).not.toHaveBeenCalled()
+			expect(fileWatcher.initialize).not.toHaveBeenCalled()
+			expect(fileWatcher.dispose).toHaveBeenCalledOnce()
+		},
+	)
 })
 
 describe("CodeIndexOrchestrator - stopIndexing", () => {
