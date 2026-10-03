@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { CodeIndexOrchestrator } from "../orchestrator"
+import { TelemetryService } from "@roo-code/telemetry"
+import { TelemetryEventName } from "@roo-code/types"
 
 import { clearAllMocks } from "../../../test-utils/reset"
 
@@ -277,6 +279,59 @@ describe("CodeIndexOrchestrator - error path cleanup gating", () => {
 			expect(vectorStore.markIndexingComplete).not.toHaveBeenCalled()
 			expect(fileWatcher.initialize).not.toHaveBeenCalled()
 			expect(fileWatcher.dispose).toHaveBeenCalledOnce()
+		},
+	)
+
+	it.each([false, true])(
+		"keeps private error details out of telemetry (cleanup failure: %s)",
+		async (cleanupFails) => {
+			const messages = [
+				"Embedding failed (Workspace: /Users/private-user/Secret Project, File: /Users/private-user/Secret Project/src/private.ts)",
+				"Embedding failed (Workspace: C:\\Users\\private-user\\Secret Project, File: C:\\Users\\private-user\\Secret Project\\private.ts)",
+			]
+			const failures = messages.map((message) => {
+				const error = new Error(message)
+				error.stack = `${message}\n    at privateFunction (/Users/private-user/Secret Project/private.ts:12:3)`
+				return error
+			})
+			vectorStore.initialize.mockResolvedValue(cleanupFails)
+			vectorStore.hasIndexedData.mockResolvedValue(!cleanupFails)
+			vectorStore.markIndexingIncomplete.mockResolvedValue(undefined)
+			scanner.scanDirectory.mockImplementation(async (_dir: string, onError: (error: Error) => void) => {
+				for (const failure of failures) onError(failure)
+				return { stats: { processed: 0, skipped: 0 }, totalBlockCount: 0 }
+			})
+			if (cleanupFails) vectorStore.clearCollection.mockRejectedValue(failures[1])
+			const orchestrator = new CodeIndexOrchestrator(
+				configManager,
+				stateManager,
+				workspacePath,
+				cacheManager,
+				vectorStore,
+				scanner,
+				fileWatcher,
+			)
+
+			await orchestrator.startIndexing()
+
+			const expectedEvents = [
+				[TelemetryEventName.CODE_INDEX_ERROR, { error: "Indexing failed", location: "startIndexing" }],
+			]
+			if (cleanupFails) {
+				expectedEvents.push([
+					TelemetryEventName.CODE_INDEX_ERROR,
+					{ error: "Index cleanup failed", location: "startIndexing.cleanup" },
+				])
+			}
+			// Exact payload assertions also exclude stacks, nested causes and aggregate error objects.
+			expect(vi.mocked(TelemetryService.instance.captureEvent).mock.calls).toEqual(expectedEvents)
+			expect(stateManager.setSystemState).toHaveBeenLastCalledWith("Error", expect.stringContaining(messages[0]))
+			if (!cleanupFails) {
+				expect(stateManager.setSystemState).toHaveBeenLastCalledWith(
+					"Error",
+					expect.stringContaining(messages[1]),
+				)
+			}
 		},
 	)
 

@@ -186,9 +186,10 @@ export class CodeIndexOrchestrator {
 			}
 
 			console.error("[CodeIndexOrchestrator] Error during indexing:", error)
+			// Scanner/provider errors and stacks may contain local paths or other private data.
+			// Keep details local; send only a fixed failure category across the telemetry boundary.
 			TelemetryService.instance.captureEvent(TelemetryEventName.CODE_INDEX_ERROR, {
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
+				error: "Indexing failed",
 				location: "startIndexing",
 			})
 			if (clearIndexOnError) {
@@ -197,8 +198,7 @@ export class CodeIndexOrchestrator {
 				} catch (cleanupError) {
 					console.error("[CodeIndexOrchestrator] Failed to clean up after error:", cleanupError)
 					TelemetryService.instance.captureEvent(TelemetryEventName.CODE_INDEX_ERROR, {
-						error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
-						stack: cleanupError instanceof Error ? cleanupError.stack : undefined,
+						error: "Index cleanup failed",
 						location: "startIndexing.cleanup",
 					})
 				}
