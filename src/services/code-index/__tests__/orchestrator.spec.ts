@@ -231,6 +231,55 @@ describe("CodeIndexOrchestrator - error path cleanup gating", () => {
 		},
 	)
 
+	it.each([false, true])(
+		"only cleans up after partial full-scan progress when the collection was created by this run: %s",
+		async (created) => {
+			const failure = new Error("batch failure after partial progress")
+			vectorStore.initialize.mockResolvedValue(created)
+			vectorStore.hasIndexedData.mockResolvedValue(false)
+			vectorStore.markIndexingIncomplete.mockResolvedValue(undefined)
+			scanner.scanDirectory.mockImplementation(
+				async (
+					_dir: string,
+					onError: (error: Error) => void,
+					onIndexed: (count: number) => void,
+					onParsed: (count: number) => void,
+				) => {
+					onParsed(3)
+					onIndexed(1)
+					onError(failure)
+					return { stats: { processed: 1, skipped: 0 }, totalBlockCount: 3 }
+				},
+			)
+			const orchestrator = new CodeIndexOrchestrator(
+				configManager,
+				stateManager,
+				workspacePath,
+				cacheManager,
+				vectorStore,
+				scanner,
+				fileWatcher,
+			)
+
+			await orchestrator.startIndexing()
+
+			expect(scanner.scanDirectory).toHaveBeenCalledOnce()
+			expect(stateManager.reportBlockIndexingProgress).toHaveBeenLastCalledWith(1, 3)
+			expect(stateManager.setSystemState).toHaveBeenLastCalledWith(
+				"Error",
+				expect.stringContaining(failure.message),
+			)
+			expect(stateManager.setSystemState).not.toHaveBeenCalledWith("Indexed", expect.any(String))
+			expect(vectorStore.clearCollection).toHaveBeenCalledTimes(created ? 1 : 0)
+			// New collections clear stale cache before scanning and again during error cleanup.
+			expect(cacheManager.clearCacheFile).toHaveBeenCalledTimes(created ? 2 : 0)
+			expect(vectorStore.markIndexingIncomplete).toHaveBeenCalledOnce()
+			expect(vectorStore.markIndexingComplete).not.toHaveBeenCalled()
+			expect(fileWatcher.initialize).not.toHaveBeenCalled()
+			expect(fileWatcher.dispose).toHaveBeenCalledOnce()
+		},
+	)
+
 	it("preserves an existing index after an incremental failure and a failed full-scan retry", async () => {
 		let complete = true
 		vectorStore.initialize.mockResolvedValue(false)
