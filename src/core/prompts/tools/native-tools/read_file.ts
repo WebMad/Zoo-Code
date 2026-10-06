@@ -1,15 +1,8 @@
 import type OpenAI from "openai"
+import { DEFAULT_LINE_LIMIT, MAX_LINE_LENGTH } from "../../../tools/file-reading/readFileConstants"
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-/** Default maximum lines to return per file (Codex-inspired predictable limit) */
-export const DEFAULT_LINE_LIMIT = 2000
-
-/** Maximum characters per line before truncation */
-export const MAX_LINE_LENGTH = 2000
-
-/** Default indentation levels to include above anchor (0 = unlimited) */
-export const DEFAULT_MAX_LEVELS = 0
+// Preserve older imports without making runtime readers depend on this tool definition.
+export { DEFAULT_LINE_LIMIT, MAX_LINE_LENGTH, DEFAULT_MAX_LEVELS } from "../../../tools/file-reading/readFileConstants"
 
 // ─── Helper Functions ─────────────────────────────────────────────────────────
 

@@ -17,7 +17,7 @@ import { AskIgnoredError } from "../task/AskIgnoredError"
 import { Task } from "../task/Task"
 
 import { listFilesTool } from "../tools/ListFilesTool"
-import { readFileTool } from "../tools/ReadFileTool"
+import { ReadFileTool } from "../tools/file-reading/ReadFileTool"
 import { readCommandOutputTool } from "../tools/ReadCommandOutputTool"
 import { writeToFileTool } from "../tools/WriteToFileTool"
 import { editTool } from "../tools/EditTool"
@@ -445,9 +445,9 @@ export async function presentAssistantMessage(cline: Task) {
 						// Prefer native typed args when available; fall back to legacy params
 						// Check if nativeArgs exists (native protocol)
 						if (block.nativeArgs) {
-							return readFileTool.getReadFileToolDescription(block.name, block.nativeArgs)
+							return new ReadFileTool().getReadFileToolDescription(block.name, block.nativeArgs)
 						}
-						return readFileTool.getReadFileToolDescription(block.name, block.params)
+						return new ReadFileTool().getReadFileToolDescription(block.name, block.params)
 					case "write_to_file":
 						return `[${block.name} for '${block.params.path}']`
 					case "apply_diff":
@@ -889,7 +889,7 @@ export async function presentAssistantMessage(cline: Task) {
 					break
 				case "read_file":
 					// Type assertion is safe here because we're in the "read_file" case
-					await readFileTool.handle(cline, block as ToolUse<"read_file">, {
+					await new ReadFileTool().handle(cline, block as ToolUse<"read_file">, {
 						askApproval,
 						handleError,
 						pushToolResult,
