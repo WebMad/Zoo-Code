@@ -34,6 +34,7 @@ export function processReadFileText(content: string, params: ReadFileParams): st
 
 	const offset = params.offset ?? 1
 	const result = readWithSlice(content, Math.max(0, offset - 1), limit)
+	if (result.content.startsWith("Error:")) return result.content
 	if (result.wasTruncated) {
 		return formatTruncatedText(result.content, offset, offset + result.returnedLines - 1, result.totalLines, limit)
 	}

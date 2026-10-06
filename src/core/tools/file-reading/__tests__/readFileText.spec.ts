@@ -13,6 +13,11 @@ describe("modern file-reading text rendering", () => {
 		expect(processReadFileText("", { path: "a" })).toBe("1 | ")
 	})
 
+	it("preserves an out-of-range error rather than reporting a nonempty file as empty", () => {
+		const output = processReadFileText("first\nsecond", { path: "a", offset: 50, limit: 1 })
+		expect(output).toBe("Error: offset 49 is beyond file end (2 lines)")
+	})
+
 	it("uses the anchor and preserves structural range summaries", () => {
 		const output = processReadFileText("function sample() {\n    return 1\n}\nconst tail = 2", {
 			path: "a",

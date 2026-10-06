@@ -212,6 +212,9 @@ export class ReadFileTool extends BaseTool<"read_file"> {
 		const content = extract ? await extractTextFromFile(fullPath) : (await fs.readFile(fullPath)).toString("utf-8")
 		if (this.isCancelled(task, options)) return { path: params.path, status: "cancelled" }
 		const text = processReadFileText(content, params)
+		if (text.startsWith("Error:")) {
+			return { path: params.path, status: "error", error: text, nativeContent: `File: ${params.path}\n${text}` }
+		}
 		await task.fileContextTracker.trackFileContext(params.path, "read_tool")
 		return {
 			path: params.path,

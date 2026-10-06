@@ -13,6 +13,7 @@
  */
 
 import path from "path"
+import type { Task } from "../../../task/Task"
 
 import { isBinaryFile } from "isbinaryfile"
 
@@ -1464,6 +1465,25 @@ describe("ReadFileTool", () => {
 	})
 
 	describe("error handling edge cases", () => {
+		it("returns structured range errors and marks the tool turn as failed", async () => {
+			const mockTask = createMockTask()
+			const callbacks = createMockCallbacks()
+			mockedReadWithSlice.mockReturnValue({
+				content: "Error: offset 99 is beyond file end (2 lines)",
+				returnedLines: 0,
+				totalLines: 2,
+				wasTruncated: false,
+				includedRanges: [],
+			})
+			// Task lifecycle fields are irrelevant to this reader-boundary double.
+			await readFileTool.execute({ path: "test.ts", offset: 100 }, mockTask as unknown as Task, callbacks)
+			expect(mockTask.didToolFailInCurrentTurn).toBe(true)
+			expect(callbacks.pushToolResult).toHaveBeenCalledWith(
+				"File: test.ts\nError: offset 99 is beyond file end (2 lines)",
+			)
+			expect(mockTask.fileContextTracker.trackFileContext).not.toHaveBeenCalled()
+		})
+
 		it("should handle unknown error types (non-Error)", async () => {
 			const mockTask = createMockTask()
 			const callbacks = createMockCallbacks()
