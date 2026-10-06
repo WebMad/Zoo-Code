@@ -48,9 +48,11 @@ describe("ClineProviderFactory", () => {
 		const secondContext = makeExtensionContext()
 		const secondTracker = new WebviewFocusTracker()
 		const secondFactory = new ClineProviderFactory(secondContext, outputChannel, secondTracker)
+		const secondProvider = Object.create(ClineProvider.prototype) as ClineProvider
+		vi.mocked(openClineInNewTab).mockResolvedValueOnce(provider).mockResolvedValueOnce(secondProvider)
 
-		await factory.createInNewTab()
-		await secondFactory.createInNewTab()
+		await expect(factory.createInNewTab()).resolves.toBe(provider)
+		await expect(secondFactory.createInNewTab()).resolves.toBe(secondProvider)
 		expect(openClineInNewTab).toHaveBeenNthCalledWith(1, {
 			context,
 			outputChannel,
