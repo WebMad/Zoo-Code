@@ -1,4 +1,4 @@
-import * as vscode from "vscode"
+import type * as vscode from "vscode"
 import type { WebviewMessage } from "@roo-code/types"
 
 import type { ClineProvider } from "./ClineProvider"
@@ -10,7 +10,7 @@ interface WebviewFocusSource {
 
 interface TrackedWebview extends vscode.Disposable {
 	readonly provider: ClineProvider
-	subscriptions?: vscode.Disposable
+	subscriptions: vscode.Disposable[]
 }
 
 export class WebviewFocusTracker implements vscode.Disposable {
@@ -24,26 +24,28 @@ export class WebviewFocusTracker implements vscode.Disposable {
 	public init(provider: ClineProvider, view: WebviewFocusSource): vscode.Disposable {
 		const trackedWebview: TrackedWebview = {
 			provider,
+			subscriptions: [],
 			dispose: () => this.untrackWebview(trackedWebview),
 		}
 		this.trackedWebviews.add(trackedWebview)
 
-		trackedWebview.subscriptions = vscode.Disposable.from(
+		trackedWebview.subscriptions = [
 			view.webview.onDidReceiveMessage((message: WebviewMessage) => this.handleMessage(trackedWebview, message)),
 			view.onDidDispose(() => trackedWebview.dispose()),
-		)
+		]
 
 		// An event source may dispose the view while its listeners are being registered.
 		if (!this.trackedWebviews.has(trackedWebview)) {
-			trackedWebview.subscriptions.dispose()
+			this.disposeSubscriptions(trackedWebview)
 		}
 
 		return trackedWebview
 	}
 
 	public dispose() {
-		vscode.Disposable.from(...this.trackedWebviews).dispose()
-		this.trackedWebviews.clear()
+		for (const trackedWebview of [...this.trackedWebviews]) {
+			trackedWebview.dispose()
+		}
 		this.lastFocusedWebview = undefined
 	}
 
@@ -64,6 +66,17 @@ export class WebviewFocusTracker implements vscode.Disposable {
 			this.lastFocusedWebview = undefined
 		}
 
-		trackedWebview.subscriptions?.dispose()
+		this.disposeSubscriptions(trackedWebview)
+	}
+
+	private disposeSubscriptions(trackedWebview: TrackedWebview): void {
+		// Drain ownership before invoking callbacks, so failures and reentrant disposal cannot retry listeners.
+		for (const subscription of trackedWebview.subscriptions.splice(0)) {
+			try {
+				subscription.dispose()
+			} catch (error) {
+				console.error("[WebviewFocusTracker] Failed to dispose webview subscription:", error)
+			}
+		}
 	}
 }
