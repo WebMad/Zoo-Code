@@ -2,24 +2,20 @@ import * as vscode from "vscode"
 import { RooCodeEventName } from "@roo-code/types"
 
 import { API } from "../api"
-import { openClineInNewTab } from "../../activate/registerCommands"
 import { ClineProvider } from "../../core/webview/ClineProvider"
+import type { ClineProviderFactory } from "../../core/webview/ClineProviderFactory"
 import type { Task } from "../../core/task/Task"
-import { WebviewFocusTracker } from "../../core/webview/WebviewFocusTracker"
 import { Package } from "../../shared/package"
-import { makeExtensionContext } from "../../test-utils/vscode"
+import { makeClineProviderFactory } from "../../test-utils/provider"
 
 vi.mock("vscode", () => ({ commands: { executeCommand: vi.fn().mockResolvedValue(undefined) } }))
 vi.mock("@roo-code/ipc", () => ({ IpcServer: class {} }))
-vi.mock("../../activate/registerCommands", () => ({ openClineInNewTab: vi.fn() }))
 vi.mock("../../core/webview/ClineProvider", () => ({ ClineProvider: class {} }))
 
 function createProvider(taskId: string) {
 	// Only the task identity is consumed by this API path; task execution is outside this test's scope.
 	const task = { taskId } as Task
 	return Object.assign(Object.create(ClineProvider.prototype) as ClineProvider, {
-		context: makeExtensionContext(),
-		webviewFocusTracker: new WebviewFocusTracker(),
 		on: vi.fn<ClineProvider["on"]>(),
 		evictCurrentTask: vi.fn<ClineProvider["evictCurrentTask"]>().mockResolvedValue(undefined),
 		postStateToWebview: vi.fn<ClineProvider["postStateToWebview"]>().mockResolvedValue(undefined),
@@ -33,6 +29,7 @@ describe("API - startNewTask routing", () => {
 	let editor: ReturnType<typeof createProvider>
 	let outputChannel: vscode.OutputChannel
 	let api: API
+	let providerFactory: ClineProviderFactory
 
 	beforeEach(() => {
 		vi.clearAllMocks()
@@ -48,8 +45,9 @@ describe("API - startNewTask routing", () => {
 			hide: vi.fn(),
 			dispose: vi.fn(),
 		}
-		vi.mocked(openClineInNewTab).mockResolvedValue(editor)
-		api = new API(outputChannel, sidebar)
+		providerFactory = makeClineProviderFactory()
+		vi.mocked(providerFactory.createInNewTab).mockResolvedValue(editor)
+		api = new API(outputChannel, sidebar, providerFactory)
 	})
 
 	it.each([true, false, undefined])("routes a task with newTab=%s to the requested provider", async (newTab) => {
@@ -64,18 +62,15 @@ describe("API - startNewTask routing", () => {
 			expect(vscode.commands.executeCommand).toHaveBeenNthCalledWith(1, "workbench.action.files.revert")
 			expect(vscode.commands.executeCommand).toHaveBeenNthCalledWith(2, "workbench.action.closeAllEditors")
 			expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(2)
-			expect(openClineInNewTab).toHaveBeenCalledExactlyOnceWith({
-				context: sidebar.context,
-				outputChannel,
-				webviewFocusTracker: sidebar.webviewFocusTracker,
-			})
+			expect(providerFactory.createInNewTab).toHaveBeenCalledExactlyOnceWith()
+			expect(vi.mocked(providerFactory.createInNewTab).mock.contexts[0]).toBe(providerFactory)
 			expect(editor.on).toHaveBeenCalledWith(RooCodeEventName.TaskCreated, expect.any(Function))
 			expect(editor.on).toHaveBeenCalledWith(RooCodeEventName.TaskCompleted, expect.any(Function))
 		} else {
 			expect(vscode.commands.executeCommand).toHaveBeenCalledExactlyOnceWith(
 				`${Package.name}.SidebarProvider.focus`,
 			)
-			expect(openClineInNewTab).not.toHaveBeenCalled()
+			expect(providerFactory.createInNewTab).not.toHaveBeenCalled()
 			expect(editor.on).not.toHaveBeenCalled()
 		}
 		expect(target.evictCurrentTask).toHaveBeenCalledOnce()
@@ -103,7 +98,7 @@ describe("API - startNewTask routing", () => {
 
 	it("propagates tab-opening failures without starting a task in another chat", async () => {
 		const error = new Error("Cannot open editor chat")
-		vi.mocked(openClineInNewTab).mockRejectedValueOnce(error)
+		vi.mocked(providerFactory.createInNewTab).mockRejectedValueOnce(error)
 
 		await expect(api.startNewTask({ configuration: {}, newTab: true })).rejects.toBe(error)
 
