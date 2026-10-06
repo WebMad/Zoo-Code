@@ -5,15 +5,21 @@ import { CodeActionId, CodeActionName } from "@roo-code/types"
 import { getCodeActionCommand } from "../utils/commands"
 import { EditorUtils } from "../integrations/editor/EditorUtils"
 import { ClineProvider } from "../core/webview/ClineProvider"
+import type { WebviewFocusTracker } from "../core/webview/WebviewFocusTracker"
 
-export const registerCodeActions = (context: vscode.ExtensionContext) => {
-	registerCodeAction(context, "explainCode", "EXPLAIN")
-	registerCodeAction(context, "fixCode", "FIX")
-	registerCodeAction(context, "improveCode", "IMPROVE")
-	registerCodeAction(context, "addToContext", "ADD_TO_CONTEXT")
+export const registerCodeActions = (context: vscode.ExtensionContext, webviewFocusTracker: WebviewFocusTracker) => {
+	registerCodeAction(context, "explainCode", "EXPLAIN", webviewFocusTracker)
+	registerCodeAction(context, "fixCode", "FIX", webviewFocusTracker)
+	registerCodeAction(context, "improveCode", "IMPROVE", webviewFocusTracker)
+	registerCodeAction(context, "addToContext", "ADD_TO_CONTEXT", webviewFocusTracker)
 }
 
-const registerCodeAction = (context: vscode.ExtensionContext, command: CodeActionId, promptType: CodeActionName) => {
+const registerCodeAction = (
+	context: vscode.ExtensionContext,
+	command: CodeActionId,
+	promptType: CodeActionName,
+	webviewFocusTracker: WebviewFocusTracker,
+) => {
 	let userInput: string | undefined
 
 	context.subscriptions.push(
@@ -47,7 +53,9 @@ const registerCodeAction = (context: vscode.ExtensionContext, command: CodeActio
 				...(userInput ? { userInput } : {}),
 			}
 
-			await ClineProvider.handleCodeAction(command, promptType, params)
+			// Capture the destination before focus returns from the source editor to a chat.
+			const targetProvider = webviewFocusTracker.getLastActiveProvider() ?? (await ClineProvider.getInstance())
+			await targetProvider?.handleCodeAction(command, promptType, params)
 		}),
 	)
 }

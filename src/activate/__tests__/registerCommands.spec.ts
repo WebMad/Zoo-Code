@@ -1,6 +1,8 @@
 import type { Mock } from "vitest"
 import * as vscode from "vscode"
 import { ClineProvider } from "../../core/webview/ClineProvider"
+import { WebviewFocusTracker } from "../../core/webview/WebviewFocusTracker"
+import { ContextProxy } from "../../core/config/ContextProxy"
 
 import { getVisibleProviderOrLog, openClineInNewTab, registerCommands, setPanel } from "../registerCommands"
 
@@ -134,7 +136,7 @@ describe("registerCommands handlers", () => {
 	let mockOutputChannel: vscode.OutputChannel
 	let mockContext: vscode.ExtensionContext
 	let mockVisibleProvider: { postMessageToWebview: Mock }
-	let mockProvider: { postMessageToWebview: Mock }
+	let mockProvider: { postMessageToWebview: Mock; webviewFocusTracker: WebviewFocusTracker }
 	let handlers: Record<string, (...args: unknown[]) => unknown>
 
 	beforeEach(() => {
@@ -162,6 +164,7 @@ describe("registerCommands handlers", () => {
 
 		mockProvider = {
 			postMessageToWebview: vi.fn().mockResolvedValue(undefined),
+			webviewFocusTracker: new WebviewFocusTracker(),
 		}
 		;(ClineProvider.getVisibleInstance as Mock).mockReturnValue(mockVisibleProvider)
 		;(vscode.commands.registerCommand as Mock).mockImplementation(
@@ -190,6 +193,13 @@ describe("registerCommands handlers", () => {
 		const disposable = mock.mock.results[0]?.value
 		expect(mock).toHaveBeenCalled()
 		expect(mockContext.subscriptions).toContain(disposable)
+	})
+
+	it("passes the shared focus tracker to the newTask handler", async () => {
+		const { handleNewTask } = await import("../handleTask")
+		const params = { prompt: "new task" }
+		await handlers["zoo-code.newTask"](params)
+		expect(handleNewTask).toHaveBeenCalledWith(params, mockProvider.webviewFocusTracker)
 	})
 
 	it("settingsButtonClicked posts both settingsButtonClicked and didBecomeVisible actions", () => {
@@ -412,7 +422,16 @@ describe("openClineInNewTab", () => {
 	})
 
 	it("creates a webview panel with title 'Zoo Code'", async () => {
-		await openClineInNewTab({ context: mockContext, outputChannel: mockOutputChannel })
+		const webviewFocusTracker = new WebviewFocusTracker()
+		await openClineInNewTab({ context: mockContext, outputChannel: mockOutputChannel, webviewFocusTracker })
+		expect(ClineProvider).toHaveBeenCalledWith(
+			mockContext,
+			mockOutputChannel,
+			"editor",
+			await ContextProxy.getInstance(mockContext),
+			webviewFocusTracker,
+			undefined,
+		)
 
 		expect(vscode.window.createWebviewPanel).toHaveBeenCalledWith(
 			"zoo-code.TabPanelProvider",

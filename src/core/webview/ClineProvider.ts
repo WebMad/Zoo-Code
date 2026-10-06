@@ -115,6 +115,7 @@ import { CustomModesManager } from "../config/CustomModesManager"
 import { PendingActionSettlementError, Task } from "../task/Task"
 
 import { webviewMessageHandler } from "./webviewMessageHandler"
+import type { WebviewFocusTracker } from "./WebviewFocusTracker"
 import type { ClineMessage, TodoItem } from "@roo-code/types"
 import {
 	type ApiMessage,
@@ -333,6 +334,7 @@ export class ClineProvider
 		private readonly outputChannel: vscode.OutputChannel,
 		private readonly renderContext: "sidebar" | "editor" = "sidebar",
 		public readonly contextProxy: ContextProxy,
+		public readonly webviewFocusTracker: WebviewFocusTracker,
 		mdmService?: MdmService,
 	) {
 		super()
@@ -944,7 +946,7 @@ export class ClineProvider
 		return false
 	}
 
-	public static async handleCodeAction(
+	public async handleCodeAction(
 		command: CodeActionId,
 		promptType: CodeActionName,
 		params: Record<string, string | any[]>,
@@ -952,28 +954,22 @@ export class ClineProvider
 		// Capture telemetry for code action usage
 		TelemetryService.instance.captureCodeActionUsed(promptType)
 
-		const visibleProvider = await ClineProvider.getInstance()
-
-		if (!visibleProvider) {
-			return
-		}
-
-		const { customSupportPrompts } = await visibleProvider.getState()
+		const { customSupportPrompts } = await this.getState()
 
 		// TODO: Improve type safety for promptType.
 		const prompt = supportPrompt.create(promptType, params, customSupportPrompts)
 
 		if (command === "addToContext") {
-			await visibleProvider.postMessageToWebview({
+			await this.postMessageToWebview({
 				type: "invoke",
 				invoke: "setChatBoxMessage",
 				text: `${prompt}\n\n`,
 			})
-			await visibleProvider.postMessageToWebview({ type: "action", action: "focusInput" })
+			await this.postMessageToWebview({ type: "action", action: "focusInput" })
 			return
 		}
 
-		await visibleProvider.createTask(prompt)
+		await this.createTask(prompt)
 	}
 
 	public static async handleTerminalAction(
@@ -1076,6 +1072,7 @@ export class ClineProvider
 		// Sets up an event listener to listen for messages passed from the webview view context
 		// and executes code based on the message that is received.
 		this.setWebviewMessageListener(webviewView.webview)
+		this.webviewDisposables.push(this.webviewFocusTracker.init(this, webviewView))
 
 		// Listen for when the panel becomes visible.
 		// https://github.com/microsoft/vscode-discussions/discussions/840
