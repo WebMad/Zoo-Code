@@ -126,18 +126,33 @@ describe("WebviewFocusTracker", () => {
 		const second = createView()
 		tracker.init(provider, first.view)
 		tracker.init(provider, second.view)
+		const listeners = [first, second].flatMap(({ view }) => [
+			vi.spyOn(view.webview.onDidReceiveMessage.mock.results[0].value, "dispose"),
+			vi.spyOn(view.onDidDispose.mock.results[0].value, "dispose"),
+		])
+		const queuedCallbacks = [first, second].map(({ view }) => view.webview.onDidReceiveMessage.mock.calls[0][0])
 		first.messages.fire({ type: "webviewDidFocus" })
 
 		tracker.dispose()
 		tracker.dispose()
+		for (const listener of listeners) {
+			expect(listener).toHaveBeenCalledOnce()
+		}
 		first.messages.fire({ type: "webviewDidFocus" })
 		second.messages.fire({ type: "webviewDidFocus" })
+		for (const callback of queuedCallbacks) {
+			callback({ type: "webviewDidFocus" })
+		}
 		expect(tracker.getLastActiveProvider()).toBeUndefined()
 
 		const third = createView()
-		tracker.init(provider, third.view)
+		const thirdProvider = {} as ClineProvider
+		tracker.init(thirdProvider, third.view)
 		third.messages.fire({ type: "webviewDidFocus" })
-		expect(tracker.getLastActiveProvider()).toBe(provider)
+		for (const callback of queuedCallbacks) {
+			callback({ type: "webviewDidFocus" })
+		}
+		expect(tracker.getLastActiveProvider()).toBe(thirdProvider)
 	})
 
 	it("keeps focus and disposal independent between trackers", () => {
