@@ -16,7 +16,8 @@ export class ReadFileBatchOutput {
 
 	get contentAllowance(): number {
 		// Sharing unused allowance prevents a large first entry starving later files.
-		return Math.floor(this.remainingContentBytes / (this.count - this.sections.length))
+		const remainingEntries = this.count - this.sections.length
+		return remainingEntries > 0 ? Math.floor(this.remainingContentBytes / remainingEntries) : 0
 	}
 
 	add(entry: ReadFileParams, result: BatchFileResult): void {

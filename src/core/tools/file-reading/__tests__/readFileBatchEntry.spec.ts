@@ -30,6 +30,18 @@ describe("pure file-reading batch entry formatting", () => {
 		expect(result.section).not.toContain("42 |")
 	})
 
+	it("prefers the structural anchor over an unrelated slice offset when no line fits", () => {
+		const result = formatReadFileBatchEntry(
+			{ path: "a", mode: "indentation", offset: 2, indentation: { anchor_line: 42 } },
+			{ path: "a", status: "approved", nativeContent: `File: a\n42 | ${"x".repeat(1000)}` },
+			1,
+			100,
+		)
+		expect(result.contentBytes).toBe(0)
+		expect(result.section).toContain("offset=42")
+		expect(result.section).not.toContain("offset=2.")
+	})
+
 	it("escapes path labels and marks bounded errors and feedback explicitly", () => {
 		const result = formatReadFileBatchEntry(
 			{ path: "a\nb" },

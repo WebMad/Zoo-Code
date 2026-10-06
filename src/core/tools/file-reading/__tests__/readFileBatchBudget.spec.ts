@@ -106,4 +106,10 @@ describe("file-reading batch result budget", () => {
 			/Entry 1:[\s\S]*Status: budget_exhausted[\s\S]*Entry 2:[\s\S]*Status: cancelled/,
 		)
 	})
+
+	it("has no content allowance after all declared entries are complete", () => {
+		const output = new ReadFileBatchOutput(5000, 1)
+		output.add({ path: "a" }, { path: "a", status: "approved", nativeContent: "File: a\n1 | content" })
+		expect(output.contentAllowance).toBe(0)
+	})
 })

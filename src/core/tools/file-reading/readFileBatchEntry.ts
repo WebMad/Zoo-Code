@@ -36,7 +36,9 @@ function clipCompleteLines(body: string, maxBytes: number): { content: string; b
 
 function formatContinuation(entry: ReadFileParams, content: string): string {
 	const numbers = [...content.matchAll(/^\s*(\d+)\s*\|/gm)].map((match) => Number(match[1]))
-	const nextOffset = numbers.length ? Math.max(...numbers) + 1 : (entry.offset ?? entry.indentation?.anchor_line ?? 1)
+	const requestedStart =
+		entry.mode === "indentation" ? (entry.indentation?.anchor_line ?? entry.offset ?? 1) : (entry.offset ?? 1)
+	const nextOffset = numbers.length ? Math.max(...numbers) + 1 : requestedStart
 	return `\nContent clipped; structural blocks may be incomplete. Continue with read_file, path as requested, mode=slice, offset=${nextOffset}. Use a smaller batch/range or free context if no lines fit.`
 }
 
