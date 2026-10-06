@@ -39,6 +39,7 @@ import { MessageManager } from "../../message-manager"
 import { forceFullModelDetailsLoad, hasLoadedFullDetails } from "../../../api/providers/fetchers/lmstudio"
 import { makeCompositeDisposable, makeEventEmitter } from "../../../test-utils/vscode"
 import { WebviewFocusTracker } from "../WebviewFocusTracker"
+import { resolveChatProvider } from "../../../activate/resolveChatProvider"
 
 // Mock setup must come before imports.
 vi.mock("../../prompts/sections/custom-instructions")
@@ -592,6 +593,10 @@ describe("ClineProvider", () => {
 		expect(ClineProvider.getVisibleInstance()).toBe(provider)
 	})
 
+	test("reports an unresolved webview as not visible", () => {
+		expect(provider.isViewVisible).toBe(false)
+	})
+
 	describe("Add to Context destination", () => {
 		let originalInstances: Set<ClineProvider>
 		let tabProvider: ClineProvider
@@ -662,9 +667,23 @@ describe("ClineProvider", () => {
 		})
 
 		const addSelection = async () => {
-			const target = provider.webviewFocusTracker.getLastActiveProvider() ?? (await ClineProvider.getInstance())
+			const target = await resolveChatProvider(provider.webviewFocusTracker)
 			await target?.handleCodeAction("addToContext", "ADD_TO_CONTEXT", { selectedText: "selected code" })
 		}
+
+		test("reports current visibility independently of panel activation", () => {
+			expect(provider.isViewVisible).toBe(true)
+			expect(tabProvider.isViewVisible).toBe(true)
+			expect(panel.active).toBe(false)
+			Object.defineProperty(sidebar.view, "visible", { value: false, configurable: true })
+			Object.defineProperty(panel, "visible", { value: false, configurable: true })
+			expect(provider.isViewVisible).toBe(false)
+			expect(tabProvider.isViewVisible).toBe(false)
+			Object.defineProperty(sidebar.view, "visible", { value: true, configurable: true })
+			Object.defineProperty(panel, "visible", { value: true, configurable: true })
+			expect(provider.isViewVisible).toBe(true)
+			expect(tabProvider.isViewVisible).toBe(true)
+		})
 
 		test("follows chat focus rather than registration order after returning to the source editor", async () => {
 			sidebar.messages.fire({ type: "webviewDidFocus" })
@@ -805,6 +824,69 @@ describe("ClineProvider", () => {
 			await addSelection()
 			expect(tab.postMessage).toHaveBeenCalledTimes(2)
 			expect(sidebar.postMessage).not.toHaveBeenCalled()
+		})
+
+		test.each(["sidebar", "tab"])(
+			"falls back to the visible chat when the last focused %s is hidden",
+			async (source) => {
+				const hidden = source === "sidebar" ? sidebar : tab
+				const visible = source === "sidebar" ? tab : sidebar
+				hidden.messages.fire({ type: "webviewDidFocus" })
+				Object.defineProperty(source === "sidebar" ? sidebar.view : panel, "visible", {
+					value: false,
+					configurable: true,
+				})
+
+				const target = await resolveChatProvider(provider.webviewFocusTracker)
+				expect(target).toBe(source === "sidebar" ? tabProvider : provider)
+				await target?.handleCodeAction("addToContext", "ADD_TO_CONTEXT", { selectedText: "selected code" })
+
+				expect(hidden.postMessage).not.toHaveBeenCalled()
+				expect(visible.postMessage).toHaveBeenCalledWith({
+					type: "invoke",
+					invoke: "setChatBoxMessage",
+					text: expect.stringContaining("selected code"),
+				})
+				expect(visible.postMessage).toHaveBeenCalledWith({ type: "action", action: "focusInput" })
+				expect(vscode.commands.executeCommand).not.toHaveBeenCalled()
+			},
+		)
+
+		test.each(["sidebar", "tab"])(
+			"opens the sidebar when the last focused %s and all other chats are hidden",
+			async (source) => {
+				const focused = source === "sidebar" ? sidebar : tab
+				focused.messages.fire({ type: "webviewDidFocus" })
+				Object.defineProperty(sidebar.view, "visible", { value: false, configurable: true })
+				Object.defineProperty(panel, "visible", { value: false, configurable: true })
+				vi.mocked(vscode.commands.executeCommand).mockImplementationOnce(async () => {
+					Object.defineProperty(sidebar.view, "visible", { value: true, configurable: true })
+				})
+
+				const target = await resolveChatProvider(provider.webviewFocusTracker)
+				expect(target).toBe(provider)
+				await target?.handleCodeAction("addToContext", "ADD_TO_CONTEXT", { selectedText: "selected code" })
+
+				expect(vscode.commands.executeCommand).toHaveBeenCalledExactlyOnceWith(
+					`${ClineProvider.sideBarId}.focus`,
+				)
+				expect(sidebar.postMessage).toHaveBeenCalledWith({
+					type: "invoke",
+					invoke: "setChatBoxMessage",
+					text: expect.stringContaining("selected code"),
+				})
+				expect(tab.postMessage).not.toHaveBeenCalled()
+				expect(panel.reveal).not.toHaveBeenCalled()
+			},
+		)
+
+		test("remembers the last focused chat across hiding and showing it without another interaction", async () => {
+			sidebar.messages.fire({ type: "webviewDidFocus" })
+			Object.defineProperty(sidebar.view, "visible", { value: false, configurable: true })
+			expect(await resolveChatProvider(provider.webviewFocusTracker)).toBe(tabProvider)
+			expect(provider.webviewFocusTracker.getLastActiveProvider()).toBe(provider)
+			Object.defineProperty(sidebar.view, "visible", { value: true, configurable: true })
+			expect(await resolveChatProvider(provider.webviewFocusTracker)).toBe(provider)
 		})
 
 		test("preserves single-view behavior", async () => {

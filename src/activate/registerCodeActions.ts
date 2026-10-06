@@ -4,8 +4,8 @@ import { CodeActionId, CodeActionName } from "@roo-code/types"
 
 import { getCodeActionCommand } from "../utils/commands"
 import { EditorUtils } from "../integrations/editor/EditorUtils"
-import { ClineProvider } from "../core/webview/ClineProvider"
 import type { WebviewFocusTracker } from "../core/webview/WebviewFocusTracker"
+import { resolveChatProvider } from "./resolveChatProvider"
 
 export const registerCodeActions = (context: vscode.ExtensionContext, webviewFocusTracker: WebviewFocusTracker) => {
 	registerCodeAction(context, "explainCode", "EXPLAIN", webviewFocusTracker)
@@ -54,7 +54,7 @@ const registerCodeAction = (
 			}
 
 			// Capture the destination before focus returns from the source editor to a chat.
-			const targetProvider = webviewFocusTracker.getLastActiveProvider() ?? (await ClineProvider.getInstance())
+			const targetProvider = await resolveChatProvider(webviewFocusTracker)
 			await targetProvider?.handleCodeAction(command, promptType, params)
 		}),
 	)

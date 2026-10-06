@@ -18,6 +18,9 @@ vi.mock("vscode", () => ({ commands: { registerCommand: vi.fn() } }))
 vi.mock("../../core/webview/ClineProvider", () => ({
 	ClineProvider: class {
 		static getInstance = vi.fn()
+		get isViewVisible() {
+			return true
+		}
 	},
 }))
 vi.mock("../../integrations/editor/EditorUtils", () => ({ EditorUtils: { getEditorContext: vi.fn() } }))
@@ -44,7 +47,7 @@ describe("registerCodeActions destination", () => {
 		registerCodeActions(makeExtensionContext(), tracker)
 	})
 
-	it.each(codeActions)("executes %s directly on the last active chat", async (command, promptType) => {
+	it.each(codeActions)("executes %s directly on the last active visible chat", async (command, promptType) => {
 		const provider = createProvider()
 		const getLastActive = vi.spyOn(tracker, "getLastActiveProvider").mockReturnValue(provider)
 		await handlers.get(getCodeActionCommand(command))!("file.ts", "selected code", 1, 2)
@@ -91,6 +94,57 @@ describe("registerCodeActions destination", () => {
 			endLine: "2",
 			diagnostics: [],
 		})
+	})
+
+	describe.each(["code action", "command palette"])("hidden destination from %s", (source) => {
+		beforeEach(() => {
+			vi.mocked(EditorUtils.getEditorContext).mockReturnValue({
+				filePath: "file.ts",
+				selectedText: "selected code",
+				startLine: 1,
+				endLine: 2,
+				diagnostics: [],
+			})
+		})
+
+		it.each(codeActions)("uses the fallback for %s instead of the hidden chat", async (command, promptType) => {
+			const hidden = createProvider()
+			vi.spyOn(hidden, "isViewVisible", "get").mockReturnValue(false)
+			vi.spyOn(tracker, "getLastActiveProvider").mockReturnValue(hidden)
+			const fallback = createProvider()
+			vi.mocked(ClineProvider.getInstance).mockResolvedValue(fallback)
+			const args = source === "code action" ? ["file.ts", "selected code", 1, 2] : []
+
+			await handlers.get(getCodeActionCommand(command))!(...args)
+
+			expect(ClineProvider.getInstance).toHaveBeenCalledOnce()
+			expect(hidden.handleCodeAction).not.toHaveBeenCalled()
+			expect(fallback.handleCodeAction).toHaveBeenCalledExactlyOnceWith(
+				command,
+				promptType,
+				expect.objectContaining({
+					filePath: "file.ts",
+					selectedText: "selected code",
+					startLine: "1",
+					endLine: "2",
+				}),
+			)
+		})
+
+		it.each(codeActions)(
+			"does not execute %s on a hidden chat when fallback finds no provider",
+			async (command) => {
+				const hidden = createProvider()
+				vi.spyOn(hidden, "isViewVisible", "get").mockReturnValue(false)
+				vi.spyOn(tracker, "getLastActiveProvider").mockReturnValue(hidden)
+				const args = source === "code action" ? ["file.ts", "selected code"] : []
+
+				await expect(handlers.get(getCodeActionCommand(command))!(...args)).resolves.toBeUndefined()
+
+				expect(ClineProvider.getInstance).toHaveBeenCalledOnce()
+				expect(hidden.handleCodeAction).not.toHaveBeenCalled()
+			},
+		)
 	})
 
 	it.each(codeActions)("does nothing for %s when fallback cannot find a provider", async (command) => {

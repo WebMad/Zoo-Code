@@ -904,8 +904,12 @@ export class ClineProvider
 		McpServerManager.unregisterProvider(this)
 	}
 
+	public get isViewVisible(): boolean {
+		return this.view?.visible === true
+	}
+
 	public static getVisibleInstance(): ClineProvider | undefined {
-		return findLast(Array.from(this.activeInstances), (instance) => instance.view?.visible === true)
+		return findLast(Array.from(this.activeInstances), (instance) => instance.isViewVisible)
 	}
 
 	public static getAllInstances(): ClineProvider[] {

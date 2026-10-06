@@ -12,6 +12,9 @@ vi.mock("vscode", () => ({
 vi.mock("../../core/webview/ClineProvider", () => ({
 	ClineProvider: class {
 		static getInstance = vi.fn()
+		get isViewVisible() {
+			return true
+		}
 	},
 }))
 vi.mock("../../i18n", () => ({ t: (key: string) => key }))
@@ -64,7 +67,7 @@ describe("handleNewTask", () => {
 	})
 
 	it.each(["supplied", "dialog"])(
-		"uses the last active chat for a %s prompt without resolving another provider",
+		"uses the last active visible chat for a %s prompt without resolving another provider",
 		async (source) => {
 			vi.spyOn(tracker, "getLastActiveProvider").mockReturnValue(provider)
 			const fallback = Object.create(ClineProvider.prototype) as ClineProvider
@@ -75,6 +78,43 @@ describe("handleNewTask", () => {
 			expect(provider.handleCodeAction).toHaveBeenCalledWith("newTask", "NEW_TASK", { userInput: "new task" })
 			expect(ClineProvider.getInstance).not.toHaveBeenCalled()
 			expect(fallback.handleCodeAction).not.toHaveBeenCalled()
+		},
+	)
+
+	it.each(["supplied", "dialog"])(
+		"uses the fallback for a %s prompt when the last active chat is hidden",
+		async (source) => {
+			vi.spyOn(provider, "isViewVisible", "get").mockReturnValue(false)
+			vi.spyOn(tracker, "getLastActiveProvider").mockReturnValue(provider)
+			const fallback = Object.create(ClineProvider.prototype) as ClineProvider
+			fallback.handleCodeAction = vi.fn().mockResolvedValue(undefined)
+			vi.mocked(ClineProvider.getInstance).mockResolvedValue(fallback)
+			vi.mocked(vscode.window.showInputBox).mockResolvedValue("new task")
+
+			await handleNewTask(source === "supplied" ? { prompt: "new task" } : undefined, tracker)
+
+			expect(ClineProvider.getInstance).toHaveBeenCalledOnce()
+			expect(provider.handleCodeAction).not.toHaveBeenCalled()
+			expect(fallback.handleCodeAction).toHaveBeenCalledExactlyOnceWith("newTask", "NEW_TASK", {
+				userInput: "new task",
+			})
+		},
+	)
+
+	it.each(["supplied", "dialog"])(
+		"does not execute a %s prompt on a hidden chat when fallback finds no provider",
+		async (source) => {
+			vi.spyOn(provider, "isViewVisible", "get").mockReturnValue(false)
+			vi.spyOn(tracker, "getLastActiveProvider").mockReturnValue(provider)
+			vi.mocked(ClineProvider.getInstance).mockResolvedValue(undefined)
+			vi.mocked(vscode.window.showInputBox).mockResolvedValue("new task")
+
+			await expect(
+				handleNewTask(source === "supplied" ? { prompt: "new task" } : undefined, tracker),
+			).resolves.toBeUndefined()
+
+			expect(ClineProvider.getInstance).toHaveBeenCalledOnce()
+			expect(provider.handleCodeAction).not.toHaveBeenCalled()
 		},
 	)
 })
