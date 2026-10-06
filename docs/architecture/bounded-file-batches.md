@@ -1,7 +1,7 @@
 # Bounded native file batches
 
 Issue [#1948](https://github.com/Zoo-Code-Org/Zoo-Code/issues/1948) adds the companion
-[`read_files`](../../src/core/prompts/tools/native-tools/read_files.ts:8) native tool.
+[`read_files`](../../src/core/prompts/tools/native-tools/read_files.ts#L8) native tool.
 It avoids intervening model turns when the paths and reading ranges are already
 known. It does **not** implement parallel dispatch or promise faster disk I/O.
 
@@ -13,14 +13,14 @@ known. It does **not** implement parallel dispatch or promise faster disk I/O.
   [shared validation schema](../../packages/types/src/read-files/read-files-params.ts) rejects
   legacy ranges, malformed options, oversized arrays, and empty paths.
 - Both native definitions build their per-file parameters directly from the
-  [independent shared schema](../../src/core/prompts/tools/native-tools/file-reading/readFileParameters.ts:31).
+  [independent shared schema](../../src/core/prompts/tools/native-tools/file-reading/readFileParameters.ts#L31).
   Each keeps its own top-level description; batch construction does not instantiate
   the single-file tool. Runtime defaults live in the
   [file-reading constants module](../../src/core/tools/file-reading/readFileConstants.ts).
-- [`ReadFilesTool.execute()`](../../src/core/tools/file-reading/ReadFilesTool.ts:25) processes
+- [`ReadFilesTool.execute()`](../../src/core/tools/file-reading/ReadFilesTool.ts#L27) processes
   entries sequentially and returns exactly one result. No general parallel-tool
   setting or provider change is required.
-- Both tools reuse [`ReadFileTool.readEntry()`](../../src/core/tools/file-reading/ReadFileTool.ts:96).
+- Both tools reuse [`ReadFileTool.readEntry()`](../../src/core/tools/file-reading/ReadFileTool.ts#L96).
   Ordinary single-file calls and historical legacy calls retain their original
   schemas and routing. The old multi-file executor is not used by the new tool.
 - Every entry passes the existing ignore check and gets its own ordinary
@@ -96,7 +96,7 @@ policy, cancellation, duplicate paths, missing files, aggregate output,
 oversized limits, UTF-8 boundaries, extracted documents, unsupported images,
 UI range/anchor navigation, and the Sol/Codex Lite single-call contract.
 
-The [known-path comparison test](../../src/core/tools/file-reading/__tests__/readFilesTool.spec.ts:319)
+The [known-path comparison test](../../src/core/tools/file-reading/__tests__/readFilesTool.spec.ts#L319)
 reads identical source/test ranges with two single-file calls versus one batch.
 The source lines are asserted equivalent. On 2026-10-06, one local run recorded:
 
