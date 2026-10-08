@@ -13,7 +13,6 @@ const rooCodeTypesShimImporters = [
 	"/webview-ui/src/components/chat/CodeIndexPopover.tsx",
 	"/webview-ui/src/components/chat/ModeSelector.tsx",
 	"/webview-ui/src/components/settings/UISettings.tsx",
-	"/webview-ui/src/components/settings/providers/OpenAICodexWebSocketToggle.tsx",
 ]
 
 export default defineConfig({
