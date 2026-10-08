@@ -10,7 +10,11 @@
 			"type": "extensionHost",
 			"request": "launch",
 			"runtimeExecutable": "${execPath}",
-			"args": ["--extensionDevelopmentPath=${workspaceFolder}/src", "--disable-extensions"],
+			"args": [
+				"/Users/gubin-dev/arcadia/flutter/pro/yxpro/yxpro_platform",
+				"--extensionDevelopmentPath=${workspaceFolder}/src",
+				"--disable-extensions"
+			],
 			"sourceMaps": true,
 			"outFiles": ["${workspaceFolder}/src/dist/**/*.js"],
 			"preLaunchTask": "${defaultBuildTask}",
