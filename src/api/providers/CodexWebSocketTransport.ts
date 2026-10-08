@@ -1,4 +1,3 @@
-import { on } from "node:events"
 import type WebSocket from "ws"
 
 import { CodexWebSocketConnection } from "./codex-websocket/CodexWebSocketConnection"
@@ -20,6 +19,7 @@ const CODEX_WEBSOCKET_URL = "wss://chatgpt.com/backend-api/codex/responses"
 /** Task-local Responses transport. Connection and history management are independent of provider event handling. */
 export class CodexWebSocketTransport {
 	private busy = false
+	private requestScope?: CodexWebSocketRequestScope
 
 	constructor(
 		private readonly connection: CodexWebSocketConnection,
@@ -35,59 +35,59 @@ export class CodexWebSocketTransport {
 	resetContinuation(): void {
 		this.continuation.reset()
 	}
-	close(): void {
-		this.connection.close()
+	async dispose(): Promise<void> {
+		const scope = this.requestScope
+		this.requestScope = undefined
+		this.connection.dispose()
+		await scope?.dispose()
 	}
 
 	async *stream(body: unknown, options: CodexWebSocketOptions): AsyncGenerator<CodexResponseEvent> {
 		if (this.busy) throw new Error("Concurrent requests on a Codex WebSocket are not supported")
 		options.signal.throwIfAborted()
-		const scope = new CodexWebSocketRequestScope(options, () => this.close())
+		const scope = new CodexWebSocketRequestScope(options, () => {
+			void this.dispose()
+		})
 		let response: CodexWebSocketResponse | undefined
 		this.busy = true
+		this.requestScope = scope
 		try {
-			const socket = await this.connection.acquire({ ...options, signal: scope.signal })
+			await scope.init(this.connection)
 			const prepared = this.continuation.prepare(body)
 			response = new CodexWebSocketResponse(this.continuation, prepared)
-			yield* this.readResponse(socket, prepared, options.headers, scope, response)
+			yield* this.readResponse(prepared, options.headers, scope, response)
 		} catch (error) {
 			if (scope.signal.aborted) throw scope.signal.reason
 			throw error
 		} finally {
-			scope.dispose()
+			await scope.dispose()
+			if (this.requestScope === scope) this.requestScope = undefined
 			this.busy = false
-			if (!response?.completed || scope.signal.aborted) this.close()
+			if (!response?.completed || scope.signal.aborted) await this.dispose()
 			else this.connection.release()
 		}
 	}
 
 	private async *readResponse(
-		socket: WebSocket,
 		prepared: PreparedCodexRequest,
 		headers: Record<string, string>,
 		scope: CodexWebSocketRequestScope,
 		response: CodexWebSocketResponse,
 	): AsyncGenerator<CodexResponseEvent> {
-		// Register before sending so a fast reply cannot be lost.
-		const events = on(socket, "message", { signal: scope.signal, close: ["close"] })
-		try {
+		scope.refreshTimeout()
+		this.send(scope.socket, prepared, headers, prepared.fullContextReason === undefined)
+		for await (const [data] of scope.events) {
 			scope.refreshTimeout()
-			this.send(socket, prepared, headers, prepared.fullContextReason === undefined)
-			for await (const [data] of events) {
-				scope.refreshTimeout()
-				const event = parseResponseEvent(String(data))
-				if (response.accept(event) === "retry") {
-					this.send(socket, prepared, headers, false, "server cache miss")
-					continue
-				}
-				if (response.completed) scope.clearTimeout()
-				yield event
-				if (response.completed) return
+			const event = parseResponseEvent(String(data))
+			if (response.accept(event) === "retry") {
+				this.send(scope.socket, prepared, headers, false, "server cache miss")
+				continue
 			}
-			throw new Error("Codex WebSocket closed before response completed; retry the request")
-		} finally {
-			await events.return?.()
+			if (response.completed) scope.clearTimeout()
+			yield event
+			if (response.completed) return
 		}
+		throw new Error("Codex WebSocket closed before response completed; retry the request")
 	}
 
 	private send(

@@ -53,7 +53,7 @@ describe("CodexWebSocketTransport", () => {
 
 	afterEach(async () => {
 		vi.restoreAllMocks()
-		transport?.close()
+		await transport?.dispose()
 		nock.disableNetConnect()
 		for (const socket of server.clients) socket.terminate()
 		await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
@@ -344,6 +344,45 @@ describe("CodexWebSocketTransport", () => {
 		await collectStream(transport.stream(body(), options()))
 		expect(connections).toBe(2)
 		expect(requests[1].previous_response_id).toBeUndefined()
+	})
+
+	it("disposes an active stream and reconnects with full context on the next request", async () => {
+		reply = (_request, socket) =>
+			socket.send(JSON.stringify({ type: "response.output_text.delta", delta: "Partial" }))
+		const stream = transport.stream(body(), options())
+		await stream.next()
+		await transport.dispose()
+		await expect(stream.next()).rejects.toThrow("closed before response completed")
+		reply = (_request, socket) => complete(socket)
+		await collectStream(transport.stream(body(), options()))
+		expect(connections).toBe(2)
+		expect(requests[1].previous_response_id).toBeUndefined()
+	})
+
+	it("disposes a completed idle connection and reconnects without stale continuation", async () => {
+		await collectStream(transport.stream(body(), options()))
+		await transport.dispose()
+		await transport.dispose()
+		await collectStream(transport.stream(body(), options()))
+		expect(connections).toBe(2)
+		expect(requests[1].previous_response_id).toBeUndefined()
+	})
+
+	it("disposes request deadlines while the consumer is paused on a partial response", async () => {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+		reply = (_request, socket) =>
+			socket.send(JSON.stringify({ type: "response.output_text.delta", delta: "Partial" }))
+		const stream = transport.stream(body(), options())
+		try {
+			await stream.next()
+			expect(vi.getTimerCount()).toBe(1)
+			await transport.dispose()
+			expect(vi.getTimerCount()).toBe(0)
+			await expect(stream.next()).rejects.toThrow("closed before response completed")
+		} finally {
+			await stream.return(undefined)
+			vi.useRealTimers()
+		}
 	})
 
 	it("bounds a silent response with a timeout", async () => {

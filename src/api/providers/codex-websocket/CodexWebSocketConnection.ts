@@ -1,17 +1,16 @@
-import { once } from "node:events"
 import WebSocket from "ws"
 
+import { CodexWebSocketConnectionScope } from "./CodexWebSocketConnectionScope"
 import { CodexWebSocketUnavailableError } from "./CodexWebSocketUnavailableError"
 import { fingerprint, type CodexWebSocketOptions } from "./protocol"
 
 const MAX_CONNECTION_AGE_MS = 55 * 60_000
 const IDLE_CONNECTION_TIMEOUT_MS = 120_000
-const HANDSHAKE_TIMEOUT_MS = 10_000
 const UPGRADE_RETRY_DELAY_MS = 60_000
 
 /** Owns a single authenticated connection and bounds its lifetime between requests. */
 export class CodexWebSocketConnection {
-	private socket?: WebSocket
+	private scope?: CodexWebSocketConnectionScope
 	private key?: string
 	private unavailableKey?: string
 	private unavailableUntil = 0
@@ -26,33 +25,33 @@ export class CodexWebSocketConnection {
 	async acquire(options: CodexWebSocketOptions): Promise<WebSocket> {
 		options.signal.throwIfAborted()
 		clearTimeout(this.idleTimer)
+		this.idleTimer = undefined
 		const key = fingerprint(options.headers)
 		if (this.unavailableKey === key && Date.now() < this.unavailableUntil) {
 			throw new CodexWebSocketUnavailableError("Codex WebSocket unavailable; using HTTP")
 		}
 		if (
 			this.key === key &&
-			this.socket?.readyState === WebSocket.OPEN &&
+			this.scope?.socket.readyState === WebSocket.OPEN &&
 			Date.now() - this.connectedAt < MAX_CONNECTION_AGE_MS
 		) {
-			return this.socket
+			return this.scope.socket
 		}
-		this.close()
-		const socket = new WebSocket(this.url, {
-			headers: { ...options.headers, "OpenAI-Beta": "responses_websockets=2026-02-06" },
-			handshakeTimeout: Math.min(options.timeoutMs, HANDSHAKE_TIMEOUT_MS),
-		})
-		this.socket = socket
-		// Idle errors must never become uncaught EventEmitter errors; stale sockets cannot clear new state.
-		socket.on("error", () => {
-			if (this.socket === socket) this.resetContinuation()
-		})
-		socket.on("close", () => {
-			if (this.socket === socket) this.close()
-		})
+		this.dispose()
+		const scope = new CodexWebSocketConnectionScope(
+			this.url,
+			() => {
+				if (this.scope === scope) this.resetContinuation()
+			},
+			() => {
+				if (this.scope === scope) this.dispose()
+			},
+		)
+		this.scope = scope
 		try {
-			await once(socket, "open", { signal: options.signal })
+			await scope.init(options)
 		} catch (error) {
+			if (this.scope === scope) this.dispose()
 			options.signal.throwIfAborted()
 			this.unavailableKey = key
 			this.unavailableUntil = Date.now() + UPGRADE_RETRY_DELAY_MS
@@ -63,21 +62,23 @@ export class CodexWebSocketConnection {
 		this.unavailableKey = undefined
 		this.connectedAt = Date.now()
 		console.info("[Codex WebSocket] Connected")
-		return socket
+		return scope.socket
 	}
 
 	release(): void {
+		if (!this.scope) return
 		clearTimeout(this.idleTimer)
-		this.idleTimer = setTimeout(() => this.close(), IDLE_CONNECTION_TIMEOUT_MS)
+		this.idleTimer = setTimeout(() => this.dispose(), IDLE_CONNECTION_TIMEOUT_MS)
 		this.idleTimer.unref()
 	}
 
-	close(): void {
+	dispose(): void {
 		clearTimeout(this.idleTimer)
-		const socket = this.socket
-		this.socket = undefined
+		this.idleTimer = undefined
+		const scope = this.scope
+		this.scope = undefined
 		this.key = undefined
 		this.resetContinuation()
-		socket?.terminate()
+		scope?.dispose()
 	}
 }

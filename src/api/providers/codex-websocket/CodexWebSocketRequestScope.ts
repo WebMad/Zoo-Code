@@ -1,34 +1,67 @@
+import type WebSocket from "ws"
+
+import type { CodexWebSocketConnection } from "./CodexWebSocketConnection"
+import { CodexWebSocketRequest } from "./CodexWebSocketRequest"
 import type { CodexWebSocketOptions } from "./protocol"
 
-/** Owns cancellation and the inactivity timer for a single request. */
+/** Assembles and owns request-local services without owning the reusable connection. */
 export class CodexWebSocketRequestScope {
-	readonly signal: AbortSignal
-	private readonly controller = new AbortController()
-	private timeout?: NodeJS.Timeout
+	private request?: CodexWebSocketRequest
+	private requestSignal?: AbortSignal
+	private initializing = false
 
 	constructor(
 		private readonly options: CodexWebSocketOptions,
 		private readonly onAbort: () => void,
-	) {
-		this.signal = AbortSignal.any([options.signal, this.controller.signal])
-		this.signal.addEventListener("abort", onAbort, { once: true })
+	) {}
+
+	get signal(): AbortSignal {
+		return this.request?.signal ?? this.requestSignal ?? this.options.signal
+	}
+
+	get socket(): WebSocket {
+		return this.getRequest().socket
+	}
+
+	get events(): AsyncIterableIterator<unknown[]> {
+		return this.getRequest().events
+	}
+
+	async init(connection: CodexWebSocketConnection): Promise<void> {
+		if (this.request || this.initializing) {
+			throw new Error("Codex WebSocket request scope is already initialized")
+		}
+		const request = new CodexWebSocketRequest(this.options, this.onAbort)
+		this.request = request
+		this.initializing = true
+		try {
+			await request.init(connection)
+			if (this.request !== request) throw new Error("Codex WebSocket request scope was disposed")
+		} catch (error) {
+			if (this.request === request) await this.dispose()
+			throw error
+		} finally {
+			this.initializing = false
+		}
 	}
 
 	refreshTimeout(): void {
-		this.clearTimeout()
-		this.timeout = setTimeout(
-			() => this.controller.abort(new Error("Codex WebSocket stream timed out")),
-			this.options.timeoutMs,
-		)
+		this.getRequest().refreshTimeout()
 	}
 
 	clearTimeout(): void {
-		clearTimeout(this.timeout)
-		this.timeout = undefined
+		this.request?.clearTimeout()
 	}
 
-	dispose(): void {
-		this.clearTimeout()
-		this.signal.removeEventListener("abort", this.onAbort)
+	async dispose(): Promise<void> {
+		const request = this.request
+		this.request = undefined
+		if (request) this.requestSignal = request.signal
+		await request?.dispose()
+	}
+
+	private getRequest(): CodexWebSocketRequest {
+		if (this.initializing || !this.request) throw new Error("Codex WebSocket request scope is not initialized")
+		return this.request
 	}
 }
