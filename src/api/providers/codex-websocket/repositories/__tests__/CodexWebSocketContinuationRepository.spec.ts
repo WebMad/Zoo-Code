@@ -79,4 +79,13 @@ describe("CodexWebSocketContinuationRepository", () => {
 		expect(store.read()).toBeUndefined()
 		expect(repository.prepare(body()).previousResponseId).toBeUndefined()
 	})
+
+	it("requires full context when the reconstructed history is shortened", () => {
+		const input = [...body().input, { role: "user", content: "Follow-up" }]
+		repository.record(repository.prepare(body(input)), { id: "resp_1", output: [] }, [])
+		expect(repository.prepare(body())).toMatchObject({
+			previousResponseId: "resp_1",
+			fullContextReason: "history shortened",
+		})
+	})
 })

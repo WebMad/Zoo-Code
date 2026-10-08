@@ -172,6 +172,66 @@ describe("Codex WebSocket scopes", () => {
 		expectNoListeners(socket)
 	})
 
+	it("guards direct socket access and initialization without duplicating handlers", async () => {
+		const source = own(new CodexWebSocketSocketRemoteDataSource("ws://test/responses", vi.fn(), vi.fn()))
+		expect(() => source.socket).toThrow("not initialized")
+		source.dispose()
+		const initialized = source.init(options)
+		const socket = lastSocket()
+		socket.emit("open")
+		await initialized
+		expect(source.socket).toBe(socket)
+		await expect(source.init(options)).rejects.toThrow("already initialized")
+		expect(socket.listenerCount("error")).toBe(1)
+		expect(socket.listenerCount("close")).toBe(1)
+	})
+
+	it("ignores stale socket-close dispatch after a replacement has initialized", async () => {
+		const onClose = vi.fn()
+		const source = own(new CodexWebSocketSocketRemoteDataSource("ws://test/responses", vi.fn(), onClose))
+		const firstInit = source.init(options)
+		const first = lastSocket()
+		first.emit("open")
+		await firstInit
+		const staleClose = first.listeners("close")[0]
+		if (!staleClose) throw new Error("No socket-close handler was registered")
+		source.dispose()
+		const nextInit = source.init(options)
+		const next = lastSocket()
+		next.emit("open")
+		await nextInit
+		staleClose()
+		expect(onClose).not.toHaveBeenCalled()
+		expect(source.socket).toBe(next)
+	})
+
+	it("preserves a replacement socket when a previous handshake finishes after disposal", async () => {
+		const source = own(new CodexWebSocketSocketRemoteDataSource("ws://test/responses", vi.fn(), vi.fn()))
+		const firstInit = expect(source.init(options)).rejects.toThrow("scope was disposed")
+		const first = lastSocket()
+		first.emit("open")
+		source.dispose()
+		const nextInit = source.init(options)
+		const next = lastSocket()
+		next.emit("open")
+		await firstInit
+		await nextInit
+		expect(source.socket).toBe(next)
+		expectNoListeners(first)
+	})
+
+	it("does not let late service initialization dispose a replacement connection scope", async () => {
+		vi.spyOn(CodexWebSocketSocketRemoteDataSource.prototype, "init").mockResolvedValue()
+		const scope = own(new CodexWebSocketConnectionScope("ws://test/responses", vi.fn(), vi.fn()))
+		const firstInit = expect(scope.init(options)).rejects.toThrow("connection scope was disposed")
+		scope.dispose()
+		await scope.init(options)
+		const replacement = scope.socketRemoteDataSource
+		await firstInit
+		expect(scope.socketRemoteDataSource).toBe(replacement)
+		expect(sockets).toHaveLength(0)
+	})
+
 	it("safely disposes an in-flight upgrade without retaining listeners", async () => {
 		const onError = vi.fn()
 		const onClose = vi.fn()

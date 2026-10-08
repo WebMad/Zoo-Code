@@ -21,6 +21,7 @@ describe("CodexWebSocketRequestManager state transitions", () => {
 	let manager: CodexWebSocketRequestManager
 	let connection: CodexWebSocketConnectionManager
 	let socket: WebSocket
+	let stateHolder: CodexWebSocketRequestStateHolder
 	let onAbort = vi.fn<() => void>()
 
 	beforeEach(() => {
@@ -33,10 +34,11 @@ describe("CodexWebSocketRequestManager state transitions", () => {
 			new CodexWebSocketConnectionStateHolder(),
 		)
 		vi.spyOn(connection, "acquire").mockResolvedValue(socket)
+		stateHolder = new CodexWebSocketRequestStateHolder()
 		manager = new CodexWebSocketRequestManager(
 			{ headers: {}, signal: new AbortController().signal, timeoutMs: 2_000 },
 			onAbort,
-			new CodexWebSocketRequestStateHolder(),
+			stateHolder,
 		)
 	})
 
@@ -59,6 +61,43 @@ describe("CodexWebSocketRequestManager state transitions", () => {
 		expect(() => manager.refreshTimeout()).toThrow("not initialized")
 		expect(socket.eventNames()).toEqual([])
 		expect(vi.getTimerCount()).toBe(0)
+	})
+
+	it("reads the caller signal and clears deadlines safely before initialization and after disposal", async () => {
+		expect(manager.signal).toBeInstanceOf(AbortSignal)
+		expect(manager.signal.aborted).toBe(false)
+		manager.clearTimeout()
+		await manager.init(connection)
+		await manager.dispose()
+		manager.clearTimeout()
+		expect(vi.getTimerCount()).toBe(0)
+	})
+
+	it("rejects repeated initialization without disturbing an active request", async () => {
+		await manager.init(connection)
+		const signal = manager.signal
+		await expect(manager.init(connection)).rejects.toThrow("already initialized")
+		expect(manager.signal).toBe(signal)
+		expect(manager.socket).toBe(socket)
+		expect(socket.listenerCount("message")).toBe(1)
+		expect(connection.acquire).toHaveBeenCalledOnce()
+	})
+
+	it("rejects overlapping initialization while acquisition is still pending", async () => {
+		let resolve: ((value: WebSocket) => void) | undefined
+		vi.mocked(connection.acquire).mockImplementationOnce(
+			() =>
+				new Promise<WebSocket>((complete) => {
+					resolve = complete
+				}),
+		)
+		const initialized = manager.init(connection)
+		await expect(manager.init(connection)).rejects.toThrow("already initialized")
+		if (!resolve) throw new Error("Acquisition was not started")
+		resolve(socket)
+		await initialized
+		expect(manager.socket).toBe(socket)
+		expect(connection.acquire).toHaveBeenCalledOnce()
 	})
 
 	it("does not convert a failed upgrade into cancellation during cleanup", async () => {
@@ -89,6 +128,18 @@ describe("CodexWebSocketRequestManager state transitions", () => {
 		expect(currentSignal.aborted).toBe(false)
 		expect(socket.listenerCount("message")).toBe(1)
 		expect(staleSocket.listenerCount("message")).toBe(0)
+	})
+
+	it("rejects acquisition completing after the injected holder has discarded the attempt", async () => {
+		const initialized = expect(manager.init(connection)).rejects.toThrow("scope was disposed")
+		const abandoned = stateHolder.dispose()
+		await initialized
+		expect(socket.eventNames()).toEqual([])
+		expect(() => manager.socket).toThrow("not initialized")
+		// Discarding state is not IO cleanup: the owner must release its abandoned listener.
+		if (abandoned.status !== "initializing") throw new Error("Expected an initializing request")
+		abandoned.signal.removeEventListener("abort", onAbort)
+		expect(abandoned.signal.aborted).toBe(false)
 	})
 
 	it.each(["refresh", "clear", "dispose"])(

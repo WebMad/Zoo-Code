@@ -89,6 +89,23 @@ describe("CodexWebSocketTransport", () => {
 		expect(events[0]).toMatchObject({ type: "response.completed", response: { usage: { output_tokens: 2 } } })
 	})
 
+	it("preserves caller metadata while adding Responses Lite transport metadata", async () => {
+		await collectStream(
+			transport.stream(
+				{ ...body(), client_metadata: { trace_id: "trace-1", feature: "test" } },
+				{
+					...options(),
+					headers: { Authorization: "Bearer test-token", "x-openai-internal-codex-responses-lite": "true" },
+				},
+			),
+		)
+		expect(requests[0].client_metadata).toEqual({
+			trace_id: "trace-1",
+			feature: "test",
+			ws_request_header_x_openai_internal_codex_responses_lite: "true",
+		})
+	})
+
 	it("reuses a socket and sends only new tool output after reconstructed reasoning and tool calls", async () => {
 		const output = [
 			{

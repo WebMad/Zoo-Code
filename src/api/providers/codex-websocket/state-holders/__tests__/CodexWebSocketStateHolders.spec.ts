@@ -62,6 +62,14 @@ describe("Codex WebSocket state holders", () => {
 		expect(holder.state).toBe(current)
 	})
 
+	it("rejects overlapping connection state and cooldown publication while connecting", () => {
+		const holder = new CodexWebSocketConnectionStateHolder()
+		const attempt = holder.beginConnection("key", scope())
+		expect(() => holder.beginConnection("other", scope())).toThrow("already active")
+		expect(() => holder.markUnavailable("key", 60_000)).toThrow("must be disconnected")
+		expect(holder.state).toBe(attempt)
+	})
+
 	it("preserves credential cooldown without retaining connection resources", () => {
 		const holder = new CodexWebSocketConnectionStateHolder()
 		holder.markUnavailable("key", 60_000)
@@ -81,6 +89,21 @@ describe("Codex WebSocket state holders", () => {
 		expect(controller.signal.aborted).toBe(false)
 		expect(initializing.status).toBe("initializing")
 		expect(vi.getTimerCount()).toBe(0)
+	})
+
+	it("rejects repeated initialization and activation from an obsolete request snapshot", () => {
+		const holder = new CodexWebSocketRequestStateHolder()
+		const controller = new AbortController()
+		const first = holder.beginInitialization(controller, controller.signal)
+		expect(() => holder.beginInitialization(controller, controller.signal)).toThrow("already initialized")
+		holder.dispose()
+		const current = holder.beginInitialization(controller, controller.signal)
+		const socket = new WebSocket("ws://test")
+		const events = asyncStreamFrom<unknown[]>([])
+		expect(() => holder.activate(first, socket, events)).toThrow("scope was disposed")
+		expect(holder.state).toBe(current)
+		holder.activate(current, socket, events)
+		expect(() => holder.beginInitialization(controller, controller.signal)).toThrow("already initialized")
 	})
 
 	it("replaces request deadline snapshots without clearing timers itself", () => {
@@ -112,6 +135,14 @@ describe("Codex WebSocket state holders", () => {
 		expect(holder.state.status).toBe("completed")
 		expect(holder.state).not.toHaveProperty("output")
 		expect(() => holder.appendOutputItem("late")).toThrow("already completed")
+	})
+
+	it("rejects repeated response initialization without replacing the prepared request", () => {
+		const holder = new CodexWebSocketResponseStateHolder()
+		holder.initialize(prepared())
+		const initial = holder.state
+		expect(() => holder.initialize(prepared())).toThrow("already initialized")
+		expect(holder.state).toBe(initial)
 	})
 
 	it("permits recovery only in the initial awaiting state", () => {

@@ -109,6 +109,20 @@ describe("CodexWebSocketConnectionManager state transitions", () => {
 		await expect(acquired).resolves.toBe(scope.socketRemoteDataSource.socket)
 	})
 
+	it("replaces a socket that is no longer open even before its close callback runs", async () => {
+		const acquired = manager.acquire(options())
+		const first = lastScope()
+		first.open()
+		await acquired
+		first.socketRemoteDataSource.socket.readyState = WebSocket.CLOSING
+		const next = manager.acquire(options())
+		const current = lastScope()
+		current.open()
+		await expect(next).resolves.toBe(current.socketRemoteDataSource.socket)
+		expect(first.dispose).toHaveBeenCalledOnce()
+		expect(scopes).toHaveLength(2)
+	})
+
 	it("preserves upgrade cooldown through cleanup without retaining a socket or timer", async () => {
 		const failed = expect(manager.acquire(options())).rejects.toBeInstanceOf(CodexWebSocketUnavailableError)
 		const scope = lastScope()
