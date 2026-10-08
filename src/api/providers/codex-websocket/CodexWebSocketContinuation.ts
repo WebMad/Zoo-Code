@@ -1,10 +1,11 @@
+import type { CachedCodexResponse } from "./CachedCodexResponse"
 import { CodexWebSocketItemSnapshot } from "./CodexWebSocketItemSnapshot"
 import type { PreparedCodexRequest } from "./PreparedCodexRequest"
 import { fingerprint, asJsonObject, type JsonObject } from "./protocol"
 
 /** Compares the server output with the history Zoo can reconstruct, retaining only hashes. */
 export class CodexWebSocketContinuation {
-	private cached?: { id: string; settings: string; input: CodexWebSocketItemSnapshot[] }
+	private cached?: CachedCodexResponse
 
 	reset(): void {
 		this.cached = undefined
