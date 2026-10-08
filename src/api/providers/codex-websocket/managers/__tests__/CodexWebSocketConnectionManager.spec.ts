@@ -127,6 +127,18 @@ describe("CodexWebSocketConnectionManager state transitions", () => {
 		expect(scopes).toHaveLength(2)
 	})
 
+	it("preserves cancellation rather than reporting HTTP fallback during cooldown", async () => {
+		const failed = expect(manager.acquire(options())).rejects.toBeInstanceOf(CodexWebSocketUnavailableError)
+		lastScope().fail(new Error("Upgrade rejected"))
+		await failed
+		const controller = new AbortController()
+		const reason = new Error("Stopped during cooldown")
+		controller.abort(reason)
+		await expect(manager.acquire({ ...options(), signal: controller.signal })).rejects.toBe(reason)
+		await expect(manager.acquire(options())).rejects.toBeInstanceOf(CodexWebSocketUnavailableError)
+		expect(scopes).toHaveLength(1)
+	})
+
 	it.each(["success", "failure"])(
 		"ignores late upgrade %s after disposal and replacement",
 		async (outcome: string) => {

@@ -10,6 +10,8 @@ const MAX_CONNECTION_AGE_MS = 55 * 60_000
 const IDLE_CONNECTION_TIMEOUT_MS = 120_000
 const UPGRADE_RETRY_DELAY_MS = 60_000
 
+type ConnectionAttempt = ReturnType<CodexWebSocketConnectionStateHolder["beginConnection"]>
+
 /** Owns a single authenticated connection and bounds its lifetime between requests. */
 export class CodexWebSocketConnectionManager {
 	constructor(
@@ -25,52 +27,10 @@ export class CodexWebSocketConnectionManager {
 	async acquire(options: CodexWebSocketOptions): Promise<WebSocket> {
 		options.signal.throwIfAborted()
 		const key = fingerprint(options.headers)
-		const state = this.state
-		if (state.status === "connecting")
-			throw new Error("Concurrent Codex WebSocket connection attempts are not supported")
-		if (state.status === "unavailable" && state.key === key && Date.now() < state.retryAt) {
-			throw new CodexWebSocketUnavailableError("Codex WebSocket unavailable; using HTTP")
-		}
-		if (
-			(state.status === "active" || state.status === "idle") &&
-			state.key === key &&
-			state.scope.socketRemoteDataSource.socket.readyState === WebSocket.OPEN &&
-			Date.now() - state.connectedAt < MAX_CONNECTION_AGE_MS
-		) {
-			if (state.status === "idle") clearTimeout(state.idleTimer)
-			this.stateHolder.activate(state)
-			return state.scope.socketRemoteDataSource.socket
-		}
-		this.dispose()
-		const scope = new CodexWebSocketConnectionScope(
-			this.url,
-			() => {
-				if (this.stateHolder.ownsScope(scope)) this.resetContinuation()
-			},
-			() => {
-				if (!this.stateHolder.ownsScope(scope)) return
-				// A connecting attempt publishes its own outcome after init settles.
-				if (this.state.status === "connecting") scope.dispose()
-				else this.dispose()
-			},
-		)
-		const attempt = this.stateHolder.beginConnection(key, scope)
-		try {
-			await scope.init(options)
-			options.signal.throwIfAborted()
-			if (!this.stateHolder.isCurrent(attempt)) throw new Error("Codex WebSocket connection attempt was disposed")
-		} catch (error) {
-			const current = this.stateHolder.isCurrent(attempt)
-			if (current) this.dispose()
-			options.signal.throwIfAborted()
-			if (!current) throw error
-			this.stateHolder.markUnavailable(key, Date.now() + UPGRADE_RETRY_DELAY_MS)
-			console.warn("[Codex WebSocket] Upgrade failed; falling back to HTTP")
-			throw new CodexWebSocketUnavailableError("Codex WebSocket upgrade failed", { cause: error })
-		}
-		this.stateHolder.connect(attempt, Date.now())
-		console.info("[Codex WebSocket] Connected")
-		return scope.socketRemoteDataSource.socket
+		this.assertAcquisitionAllowed(key)
+		const socket = this.tryReuseConnection(key)
+		if (socket) return socket
+		return this.openConnection(key, options)
 	}
 
 	release(): void {
@@ -90,5 +50,70 @@ export class CodexWebSocketConnectionManager {
 		if (state.status === "idle") clearTimeout(state.idleTimer)
 		this.resetContinuation()
 		if ("scope" in state) state.scope.dispose()
+	}
+
+	private assertAcquisitionAllowed(key: string): void {
+		const state = this.state
+		if (state.status === "connecting") {
+			throw new Error("Concurrent Codex WebSocket connection attempts are not supported")
+		}
+		if (state.status === "unavailable" && state.key === key && Date.now() < state.retryAt) {
+			throw new CodexWebSocketUnavailableError("Codex WebSocket unavailable; using HTTP")
+		}
+	}
+
+	private tryReuseConnection(key: string): WebSocket | undefined {
+		const state = this.state
+		if (state.status !== "active" && state.status !== "idle") return undefined
+		if (state.key !== key || Date.now() - state.connectedAt >= MAX_CONNECTION_AGE_MS) return undefined
+		const socket = state.scope.socketRemoteDataSource.socket
+		if (socket.readyState !== WebSocket.OPEN) return undefined
+		if (state.status === "idle") clearTimeout(state.idleTimer)
+		this.stateHolder.activate(state)
+		return socket
+	}
+
+	private async openConnection(key: string, options: CodexWebSocketOptions): Promise<WebSocket> {
+		this.dispose()
+		const scope = this.createConnectionScope()
+		const attempt = this.stateHolder.beginConnection(key, scope)
+		try {
+			await scope.init(options)
+			options.signal.throwIfAborted()
+			if (!this.stateHolder.isCurrent(attempt)) throw new Error("Codex WebSocket connection attempt was disposed")
+		} catch (error) {
+			this.handleUpgradeFailure(attempt, options.signal, error)
+		}
+		this.stateHolder.connect(attempt, Date.now())
+		console.info("[Codex WebSocket] Connected")
+		return scope.socketRemoteDataSource.socket
+	}
+
+	private createConnectionScope(): CodexWebSocketConnectionScope {
+		const scope = new CodexWebSocketConnectionScope(
+			this.url,
+			() => {
+				if (this.stateHolder.ownsScope(scope)) this.resetContinuation()
+			},
+			() => this.handleScopeClose(scope),
+		)
+		return scope
+	}
+
+	private handleScopeClose(scope: CodexWebSocketConnectionScope): void {
+		if (!this.stateHolder.ownsScope(scope)) return
+		// A connecting attempt publishes its own outcome after init settles.
+		if (this.state.status === "connecting") scope.dispose()
+		else this.dispose()
+	}
+
+	private handleUpgradeFailure(attempt: ConnectionAttempt, signal: AbortSignal, error: unknown): never {
+		const current = this.stateHolder.isCurrent(attempt)
+		if (current) this.dispose()
+		signal.throwIfAborted()
+		if (!current) throw error
+		this.stateHolder.markUnavailable(attempt.key, Date.now() + UPGRADE_RETRY_DELAY_MS)
+		console.warn("[Codex WebSocket] Upgrade failed; falling back to HTTP")
+		throw new CodexWebSocketUnavailableError("Codex WebSocket upgrade failed", { cause: error })
 	}
 }

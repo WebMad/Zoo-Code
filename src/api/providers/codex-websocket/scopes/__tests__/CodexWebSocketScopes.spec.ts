@@ -185,6 +185,20 @@ describe("Codex WebSocket scopes", () => {
 		expectNoListeners(socket)
 	})
 
+	it("cleans up cancellation after socket open but before initialization resolves", async () => {
+		const scope = own(new CodexWebSocketConnectionScope("ws://test/responses", vi.fn(), vi.fn()))
+		const initialized = scope.init(options)
+		const reason = new Error("Stopped after socket open")
+		const rejected = expect(initialized).rejects.toBe(reason)
+		const socket = lastSocket()
+		socket.emit("open")
+		controller.abort(reason)
+		await rejected
+		expect(socket.terminate).toHaveBeenCalledOnce()
+		expect(() => scope.socketRemoteDataSource).toThrow("not initialized")
+		expectNoListeners(socket)
+	})
+
 	it("removes subscriptions from an already-closed socket", async () => {
 		const onClose = vi.fn()
 		const scope = own(new CodexWebSocketConnectionScope("ws://test/responses", vi.fn(), onClose))
