@@ -6,6 +6,7 @@ import OpenAI from "openai"
 import {
 	type ModelInfo,
 	OPEN_AI_CODEX_SERVICE_TIER_KEY,
+	DEFAULT_OPEN_AI_CODEX_USE_WEBSOCKET,
 	OpenAiCodexServiceTier,
 	openAiCodexDefaultModelId,
 	OpenAiCodexModelId,
@@ -24,6 +25,7 @@ import { ApiStream, ApiStreamUsageChunk } from "../transform/stream"
 import { getModelParams } from "../transform/model-params"
 
 import { BaseProvider } from "./base-provider"
+import { CodexWebSocketTransport, CodexWebSocketUnavailableError } from "./CodexWebSocketTransport"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata, CompletePromptOptions } from "../index"
 import { isMcpTool } from "../../utils/mcp-name"
 import { sanitizeOpenAiCallId } from "../../utils/tool-id"
@@ -129,6 +131,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 	protected options: ApiHandlerOptions
 	private readonly providerName = "OpenAI Codex"
 	private client?: OpenAI
+	private readonly webSocketTransport?: CodexWebSocketTransport
 	// Complete response output array
 	private lastResponseOutput: any[] | undefined
 	// Last top-level response id
@@ -181,6 +184,9 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 	constructor(options: ApiHandlerOptions) {
 		super()
 		this.options = options
+		if (options.openAiCodexUseWebSocket ?? DEFAULT_OPEN_AI_CODEX_USE_WEBSOCKET) {
+			this.webSocketTransport = CodexWebSocketTransport.create()
+		}
 		// Generate a new session ID for standalone handler usage (fallback)
 		this.sessionId = uuidv7()
 	}
@@ -248,6 +254,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 		this.sawTextDeltaInCurrentResponse = false
 		this.sawSdkEventInCurrentResponse = false
 		this.streamedToolCallIds.clear()
+		if (metadata?.suppressPreviousResponseId) this.webSocketTransport?.resetContinuation()
 
 		// Get access token from OAuth manager
 		let accessToken = await openAiCodexOAuthManager.getAccessToken()
@@ -491,13 +498,20 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 						timeout: this.timeoutMs,
 					})
 
-				const stream = (await (client as any).responses.create(requestBody, {
-					signal: this.abortController.signal,
-					// If the SDK supports per-request overrides, ensure headers are present.
-					headers: codexHeaders,
-				})) as AsyncIterable<any>
+				const sdkRequest: OpenAI.Responses.ResponseCreateParamsStreaming = requestBody
+				const stream = this.webSocketTransport
+					? this.webSocketTransport.stream(requestBody, {
+							headers: { ...codexHeaders, Authorization: `Bearer ${accessToken}` },
+							signal: this.abortController.signal,
+							timeoutMs: this.timeoutMs,
+						})
+					: await client.responses.create(sdkRequest, {
+							signal: this.abortController.signal,
+							// If the SDK supports per-request overrides, ensure headers are present.
+							headers: codexHeaders,
+						})
 
-				if (typeof (stream as any)?.[Symbol.asyncIterator] !== "function") {
+				if (typeof stream?.[Symbol.asyncIterator] !== "function") {
 					throw new Error(
 						"OpenAI SDK did not return an AsyncIterable for Responses API streaming. Falling back to SSE.",
 					)
@@ -528,6 +542,11 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 				// second request on an already-aborted signal and report the cancellation as a
 				// connection error.
 				if (this.sawSdkEventInCurrentResponse || this.abortController?.signal.aborted) {
+					throw sdkErr
+				}
+				// A sent WebSocket request may be accepted even before its first event arrives.
+				// Only a failed HTTP upgrade is safe to replay through the existing fallback.
+				if (this.webSocketTransport && !(sdkErr instanceof CodexWebSocketUnavailableError)) {
 					throw sdkErr
 				}
 
