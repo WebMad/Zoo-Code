@@ -1,20 +1,15 @@
 import type WebSocket from "ws"
 
-import { CodexWebSocketConnection } from "./codex-websocket/CodexWebSocketConnection"
-import { CodexWebSocketContinuation } from "./codex-websocket/CodexWebSocketContinuation"
-import type { PreparedCodexRequest } from "./codex-websocket/PreparedCodexRequest"
-import {
-	asJsonObject,
-	parseResponseEvent,
-	type CodexResponseEvent,
-	type CodexWebSocketOptions,
-} from "./codex-websocket/protocol"
-import { CodexWebSocketRequestScope } from "./codex-websocket/CodexWebSocketRequestScope"
-import { CodexWebSocketResponse } from "./codex-websocket/CodexWebSocketResponse"
+import type { CodexWebSocketConnectionManager } from "./codex-websocket/managers/CodexWebSocketConnectionManager"
+import type { CodexWebSocketRequestManager } from "./codex-websocket/managers/CodexWebSocketRequestManager"
+import type { CodexWebSocketResponseManager } from "./codex-websocket/managers/CodexWebSocketResponseManager"
+import type { PreparedCodexRequest } from "./codex-websocket/models/PreparedCodexRequest"
+import type { CodexResponseEvent, CodexWebSocketOptions } from "./codex-websocket/models/protocol"
+import type { CodexWebSocketContinuationRepository } from "./codex-websocket/repositories/CodexWebSocketContinuationRepository"
+import type { CodexWebSocketRequestScope } from "./codex-websocket/scopes/CodexWebSocketRequestScope"
+import { asJsonObject, parseResponseEvent } from "./codex-websocket/utils/protocol"
 
-export { CodexWebSocketUnavailableError } from "./codex-websocket/CodexWebSocketUnavailableError"
-
-const CODEX_WEBSOCKET_URL = "wss://chatgpt.com/backend-api/codex/responses"
+export { CodexWebSocketUnavailableError } from "./codex-websocket/errors/CodexWebSocketUnavailableError"
 
 /** Task-local Responses transport. Connection and history management are independent of provider event handling. */
 export class CodexWebSocketTransport {
@@ -22,15 +17,13 @@ export class CodexWebSocketTransport {
 	private requestScope?: CodexWebSocketRequestScope
 
 	constructor(
-		private readonly connection: CodexWebSocketConnection,
-		private readonly continuation: CodexWebSocketContinuation,
+		private readonly connection: CodexWebSocketConnectionManager,
+		private readonly continuation: CodexWebSocketContinuationRepository,
+		private readonly createRequestScope: (
+			options: CodexWebSocketOptions,
+			onAbort: () => void,
+		) => CodexWebSocketRequestScope,
 	) {}
-
-	static create(url = CODEX_WEBSOCKET_URL): CodexWebSocketTransport {
-		const continuation = new CodexWebSocketContinuation()
-		const connection = new CodexWebSocketConnection(url, () => continuation.reset())
-		return new CodexWebSocketTransport(connection, continuation)
-	}
 
 	resetContinuation(): void {
 		this.continuation.reset()
@@ -45,25 +38,28 @@ export class CodexWebSocketTransport {
 	async *stream(body: unknown, options: CodexWebSocketOptions): AsyncGenerator<CodexResponseEvent> {
 		if (this.busy) throw new Error("Concurrent requests on a Codex WebSocket are not supported")
 		options.signal.throwIfAborted()
-		const scope = new CodexWebSocketRequestScope(options, () => {
+		const scope = this.createRequestScope(options, () => {
 			void this.dispose()
 		})
-		let response: CodexWebSocketResponse | undefined
+		let request: CodexWebSocketRequestManager | undefined
+		let response: CodexWebSocketResponseManager | undefined
 		this.busy = true
 		this.requestScope = scope
 		try {
-			await scope.init(this.connection)
-			const prepared = this.continuation.prepare(body)
-			response = new CodexWebSocketResponse(this.continuation, prepared)
-			yield* this.readResponse(prepared, options.headers, scope, response)
+			await scope.init(this.connection, this.continuation, body)
+			request = scope.requestManager
+			response = scope.responseManager
+			const prepared = response.preparedRequest
+			yield* this.readResponse(prepared, options.headers, request, response)
 		} catch (error) {
-			if (scope.signal.aborted) throw scope.signal.reason
+			if (request?.signal.aborted) throw request.signal.reason
+			options.signal.throwIfAborted()
 			throw error
 		} finally {
 			await scope.dispose()
 			if (this.requestScope === scope) this.requestScope = undefined
 			this.busy = false
-			if (!response?.completed || scope.signal.aborted) await this.dispose()
+			if (!response?.completed || request?.signal.aborted) await this.dispose()
 			else this.connection.release()
 		}
 	}
@@ -71,19 +67,19 @@ export class CodexWebSocketTransport {
 	private async *readResponse(
 		prepared: PreparedCodexRequest,
 		headers: Record<string, string>,
-		scope: CodexWebSocketRequestScope,
-		response: CodexWebSocketResponse,
+		request: CodexWebSocketRequestManager,
+		response: CodexWebSocketResponseManager,
 	): AsyncGenerator<CodexResponseEvent> {
-		scope.refreshTimeout()
-		this.send(scope.socket, prepared, headers, prepared.fullContextReason === undefined)
-		for await (const [data] of scope.events) {
-			scope.refreshTimeout()
+		request.refreshTimeout()
+		this.send(request.socket, prepared, headers, prepared.fullContextReason === undefined)
+		for await (const [data] of request.events) {
+			request.refreshTimeout()
 			const event = parseResponseEvent(String(data))
 			if (response.accept(event) === "retry") {
-				this.send(scope.socket, prepared, headers, false, "server cache miss")
+				this.send(request.socket, prepared, headers, false, "server cache miss")
 				continue
 			}
-			if (response.completed) scope.clearTimeout()
+			if (response.completed) request.clearTimeout()
 			yield event
 			if (response.completed) return
 		}

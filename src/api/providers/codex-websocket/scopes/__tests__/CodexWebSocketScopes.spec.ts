@@ -1,10 +1,19 @@
 import WebSocket from "ws"
 
-import { CodexWebSocketConnection } from "../CodexWebSocketConnection"
+import { CodexWebSocketTransport } from "../../../CodexWebSocketTransport"
+import { CodexWebSocketResponseLocalDataSource } from "../../data/local/CodexWebSocketResponseLocalDataSource"
+import { CodexWebSocketContinuationRepository } from "../../repositories/CodexWebSocketContinuationRepository"
+import { CodexWebSocketConnectionManager } from "../../managers/CodexWebSocketConnectionManager"
 import { CodexWebSocketConnectionScope } from "../CodexWebSocketConnectionScope"
 import { CodexWebSocketRequestScope } from "../CodexWebSocketRequestScope"
-import { CodexWebSocketUnavailableError } from "../CodexWebSocketUnavailableError"
-import type { CodexWebSocketOptions } from "../protocol"
+import { CodexWebSocketTransportScope } from "../CodexWebSocketTransportScope"
+import { CodexWebSocketRequestManager } from "../../managers/CodexWebSocketRequestManager"
+import { CodexWebSocketResponseManager } from "../../managers/CodexWebSocketResponseManager"
+import { CodexWebSocketSocketRemoteDataSource } from "../../data/remote/CodexWebSocketSocketRemoteDataSource"
+import { CodexWebSocketUnavailableError } from "../../errors/CodexWebSocketUnavailableError"
+import type { CodexWebSocketOptions } from "../../models/protocol"
+import { CodexWebSocketConnectionStateHolder } from "../../state-holders/CodexWebSocketConnectionStateHolder"
+import { CodexWebSocketRequestStateHolder } from "../../state-holders/CodexWebSocketRequestStateHolder"
 
 const { sockets } = vi.hoisted(() => ({ sockets: [] as WebSocket[] }))
 
@@ -46,7 +55,9 @@ describe("Codex WebSocket scopes", () => {
 	let controller: AbortController
 	let options: CodexWebSocketOptions
 	let reset = vi.fn<() => void>()
-	let connection: CodexWebSocketConnection
+	let connection: CodexWebSocketConnectionManager
+	let repository: CodexWebSocketContinuationRepository
+	const body = { model: "test-model", input: [] }
 
 	const own = <T extends { dispose(): void | Promise<void> }>(resource: T): T => {
 		resources.push(resource)
@@ -66,7 +77,14 @@ describe("Codex WebSocket scopes", () => {
 		controller = new AbortController()
 		options = { headers: { Authorization: "Bearer test-token" }, signal: controller.signal, timeoutMs: 2_000 }
 		reset = vi.fn()
-		connection = own(new CodexWebSocketConnection("ws://test/responses", reset))
+		connection = own(
+			new CodexWebSocketConnectionManager(
+				"ws://test/responses",
+				reset,
+				new CodexWebSocketConnectionStateHolder(),
+			),
+		)
+		repository = new CodexWebSocketContinuationRepository(new CodexWebSocketResponseLocalDataSource())
 	})
 
 	afterEach(async () => {
@@ -80,18 +98,56 @@ describe("Codex WebSocket scopes", () => {
 		const addListener = vi.spyOn(AbortSignal.prototype, "addEventListener")
 		const onAbort = vi.fn()
 		const scope = own(new CodexWebSocketConnectionScope("ws://test/responses", vi.fn(), vi.fn()))
-		const request = own(new CodexWebSocketRequestScope(options, onAbort))
+		const requestScope = own(new CodexWebSocketRequestScope(options, onAbort))
+		const request = own(new CodexWebSocketRequestManager(options, onAbort, new CodexWebSocketRequestStateHolder()))
+		own(new CodexWebSocketSocketRemoteDataSource("ws://test/responses", vi.fn(), vi.fn()))
 		expect(sockets).toHaveLength(0)
 		expect(addListener).not.toHaveBeenCalled()
 		expect(vi.getTimerCount()).toBe(0)
-		expect(() => scope.socket).toThrow("not initialized")
+		expect(() => scope.socketRemoteDataSource).toThrow("not initialized")
+		expect(() => requestScope.requestManager).toThrow("not initialized")
 		expect(() => request.socket).toThrow("not initialized")
 		expect(() => request.events).toThrow("not initialized")
 		expect(() => request.refreshTimeout()).toThrow("not initialized")
 		scope.dispose()
+		await requestScope.dispose()
 		await request.dispose()
 		controller.abort()
 		expect(onAbort).not.toHaveBeenCalled()
+	})
+
+	it("exposes only owned services and lifecycle methods on scopes", () => {
+		expect(Object.getOwnPropertyNames(CodexWebSocketConnectionScope.prototype).sort()).toEqual(
+			["constructor", "socketRemoteDataSource", "init", "dispose"].sort(),
+		)
+		expect(Object.getOwnPropertyNames(CodexWebSocketRequestScope.prototype).sort()).toEqual(
+			["constructor", "requestManager", "responseManager", "init", "dispose"].sort(),
+		)
+		expect(Object.getOwnPropertyNames(CodexWebSocketTransportScope.prototype).sort()).toEqual(
+			["constructor", "transport", "init", "dispose"].sort(),
+		)
+	})
+
+	it("assembles the transport only on root-scope initialization without creating runtime resources", async () => {
+		vi.useFakeTimers()
+		const addListener = vi.spyOn(AbortSignal.prototype, "addEventListener")
+		const scope = own(new CodexWebSocketTransportScope("ws://test/responses"))
+		expect(() => scope.transport).toThrow("not initialized")
+		await scope.dispose()
+		scope.init()
+		const transport = scope.transport
+		expect(transport).toBeInstanceOf(CodexWebSocketTransport)
+		expect(() => scope.init()).toThrow("already initialized")
+		expect(sockets).toHaveLength(0)
+		expect(addListener).not.toHaveBeenCalled()
+		expect(vi.getTimerCount()).toBe(0)
+		const dispose = vi.spyOn(transport, "dispose")
+		await scope.dispose()
+		await scope.dispose()
+		expect(dispose).toHaveBeenCalledOnce()
+		expect(() => scope.transport).toThrow("not initialized")
+		scope.init()
+		expect(scope.transport).not.toBe(transport)
 	})
 
 	it("creates the connection on init and removes its subscriptions on disposal", async () => {
@@ -102,14 +158,15 @@ describe("Codex WebSocket scopes", () => {
 		const socket = lastSocket()
 		socket.emit("open")
 		await initialized
-		expect(scope.socket).toBe(socket)
+		expect(scope.socketRemoteDataSource).toBeInstanceOf(CodexWebSocketSocketRemoteDataSource)
+		expect(scope.socketRemoteDataSource.socket).toBe(socket)
 		await expect(scope.init(options)).rejects.toThrow("already initialized")
 		socket.emit("error", new Error("Idle error"))
 		expect(onError).toHaveBeenCalledOnce()
 		scope.dispose()
 		scope.dispose()
 		expect(socket.terminate).toHaveBeenCalledOnce()
-		expect(() => scope.socket).toThrow("not initialized")
+		expect(() => scope.socketRemoteDataSource).toThrow("not initialized")
 		await Promise.resolve()
 		expect(onClose).not.toHaveBeenCalled()
 		expectNoListeners(socket)
@@ -159,34 +216,42 @@ describe("Codex WebSocket scopes", () => {
 		expectNoListeners(first)
 		expect(onError).not.toHaveBeenCalled()
 		expect(onClose).not.toHaveBeenCalled()
-		expect(scope.socket).toBe(next)
+		expect(scope.socketRemoteDataSource.socket).toBe(next)
 	})
 
 	it("does not open a connection for an already-aborted request", async () => {
 		controller.abort(new Error("Stopped"))
 		const scope = own(new CodexWebSocketConnectionScope("ws://test/responses", vi.fn(), vi.fn()))
-		const request = own(new CodexWebSocketRequestScope(options, vi.fn()))
+		const requestScope = own(new CodexWebSocketRequestScope(options, vi.fn()))
 		await expect(scope.init(options)).rejects.toThrow("Stopped")
-		await expect(request.init(connection)).rejects.toThrow("Stopped")
+		await expect(requestScope.init(connection, repository, body)).rejects.toThrow("Stopped")
 		expect(sockets).toHaveLength(0)
 	})
 
 	it("owns request subscriptions and deadlines without disposing the reusable connection", async () => {
 		vi.useFakeTimers()
 		const onAbort = vi.fn()
-		const request = own(new CodexWebSocketRequestScope(options, onAbort))
-		const initialized = request.init(connection)
+		const requestScope = own(new CodexWebSocketRequestScope(options, onAbort))
+		const initialized = requestScope.init(connection, repository, body)
+		expect(() => requestScope.requestManager).toThrow("not initialized")
 		const socket = lastSocket()
 		socket.emit("open")
 		await initialized
+		const request = requestScope.requestManager
+		expect(request).toBeInstanceOf(CodexWebSocketRequestManager)
+		expect(requestScope.responseManager).toBeInstanceOf(CodexWebSocketResponseManager)
+		expect(requestScope.responseManager.preparedRequest.request).toBe(body)
 		expect(request.socket).toBe(socket)
 		expect(socket.listenerCount("message")).toBe(1)
-		await expect(request.init(connection)).rejects.toThrow("already initialized")
+		await expect(requestScope.init(connection, repository, body)).rejects.toThrow("already initialized")
 		request.refreshTimeout()
 		request.refreshTimeout()
 		expect(vi.getTimerCount()).toBe(1)
-		await request.dispose()
-		await request.dispose()
+		await requestScope.dispose()
+		await requestScope.dispose()
+		expect(() => requestScope.requestManager).toThrow("not initialized")
+		expect(() => request.socket).toThrow("not initialized")
+		expect(() => request.events).toThrow("not initialized")
 		expect(vi.getTimerCount()).toBe(0)
 		expect(socket.listenerCount("message")).toBe(0)
 		expect(socket.listenerCount("error")).toBe(1)
@@ -197,13 +262,16 @@ describe("Codex WebSocket scopes", () => {
 	})
 
 	it("can reinitialize a disposed request on the same connection without duplicate listeners", async () => {
-		const request = own(new CodexWebSocketRequestScope(options, () => connection.dispose()))
-		const initialized = request.init(connection)
+		const requestScope = own(new CodexWebSocketRequestScope(options, () => connection.dispose()))
+		const initialized = requestScope.init(connection, repository, body)
 		const socket = lastSocket()
 		socket.emit("open")
 		await initialized
-		await request.dispose()
-		await request.init(connection)
+		const firstRequest = requestScope.requestManager
+		await requestScope.dispose()
+		await requestScope.init(connection, repository, body)
+		const request = requestScope.requestManager
+		expect(request).not.toBe(firstRequest)
 		expect(sockets).toHaveLength(1)
 		expect(socket.listenerCount("message")).toBe(1)
 		const event = request.events.next()
@@ -211,46 +279,67 @@ describe("Codex WebSocket scopes", () => {
 		controller.abort(reason)
 		await expect(event).rejects.toThrow()
 		expect(request.signal.reason).toBe(reason)
-		await request.dispose()
+		await requestScope.dispose()
 		expectNoListeners(socket)
 	})
 
 	it("cleans up a rejected upgrade and preserves the safe HTTP fallback error", async () => {
 		const onAbort = vi.fn()
-		const request = own(new CodexWebSocketRequestScope(options, onAbort))
-		const initialized = expect(request.init(connection)).rejects.toBeInstanceOf(CodexWebSocketUnavailableError)
+		const requestScope = own(new CodexWebSocketRequestScope(options, onAbort))
+		const initialized = expect(requestScope.init(connection, repository, body)).rejects.toBeInstanceOf(
+			CodexWebSocketUnavailableError,
+		)
 		const socket = lastSocket()
 		socket.emit("error", new Error("Upgrade rejected"))
 		await initialized
-		expect(request.signal.aborted).toBe(false)
+		expect(() => requestScope.requestManager).toThrow("not initialized")
+		expect(onAbort).not.toHaveBeenCalled()
 		expectNoListeners(socket)
 		controller.abort()
 		expect(onAbort).not.toHaveBeenCalled()
 	})
 
-	it("cancels and cleans up a request disposed during initialization", async () => {
-		const request = own(new CodexWebSocketRequestScope(options, () => connection.dispose()))
-		const initialized = expect(request.init(connection)).rejects.toThrow()
+	it("cleans up request subscriptions when response-manager initialization fails", async () => {
+		const onAbort = vi.fn()
+		const scope = own(new CodexWebSocketRequestScope(options, onAbort))
+		const initialized = expect(scope.init(connection, repository, { input: "invalid" })).rejects.toThrow(
+			"input must be an array",
+		)
 		const socket = lastSocket()
-		await request.dispose()
+		socket.emit("open")
+		await initialized
+		expect(() => scope.requestManager).toThrow("not initialized")
+		expect(() => scope.responseManager).toThrow("not initialized")
+		expect(socket.listenerCount("message")).toBe(0)
+		expect(socket.listenerCount("error")).toBe(1)
+		expect(socket.listenerCount("close")).toBe(1)
+		controller.abort()
+		expect(onAbort).not.toHaveBeenCalled()
+	})
+
+	it("cancels and cleans up a request disposed during initialization", async () => {
+		const requestScope = own(new CodexWebSocketRequestScope(options, () => connection.dispose()))
+		const initialized = expect(requestScope.init(connection, repository, body)).rejects.toThrow()
+		const socket = lastSocket()
+		await requestScope.dispose()
 		await initialized
 		expectNoListeners(socket)
-		expect(() => request.socket).toThrow("not initialized")
-		expect(() => request.events).toThrow("not initialized")
+		expect(() => requestScope.requestManager).toThrow("not initialized")
 	})
 
 	it("does not become initialized if disposed after acquiring a socket but before init resolves", async () => {
 		const socket = new WebSocket("ws://test/responses")
 		socket.emit("open")
 		vi.spyOn(connection, "acquire").mockResolvedValue(socket)
-		const request = own(new CodexWebSocketRequestScope(options, vi.fn()))
-		const initialized = expect(request.init(connection)).rejects.toThrow("scope was disposed")
+		const requestScope = own(new CodexWebSocketRequestScope(options, vi.fn()))
+		const initialized = expect(requestScope.init(connection, repository, body)).rejects.toThrow(
+			"scope was disposed",
+		)
 		await Promise.resolve()
-		await request.dispose()
+		await requestScope.dispose()
 		await initialized
 		expectNoListeners(socket)
-		expect(() => request.socket).toThrow("not initialized")
-		expect(() => request.events).toThrow("not initialized")
+		expect(() => requestScope.requestManager).toThrow("not initialized")
 	})
 
 	it("clears an idle connection timer on disposal and does not schedule one without a socket", async () => {

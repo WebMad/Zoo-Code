@@ -1,14 +1,15 @@
-import type { CachedCodexResponse } from "./CachedCodexResponse"
-import { CodexWebSocketItemSnapshot } from "./CodexWebSocketItemSnapshot"
-import type { PreparedCodexRequest } from "./PreparedCodexRequest"
-import { fingerprint, asJsonObject, type JsonObject } from "./protocol"
+import type { CodexWebSocketResponseLocalDataSource } from "../data/local/CodexWebSocketResponseLocalDataSource"
+import { CodexWebSocketItemSnapshotModel } from "../models/CodexWebSocketItemSnapshotModel"
+import type { PreparedCodexRequest } from "../models/PreparedCodexRequest"
+import type { JsonObject } from "../models/protocol"
+import { fingerprint, asJsonObject } from "../utils/protocol"
 
 /** Compares the server output with the history Zoo can reconstruct, retaining only hashes. */
-export class CodexWebSocketContinuation {
-	private cached?: CachedCodexResponse
+export class CodexWebSocketContinuationRepository {
+	constructor(private readonly store: CodexWebSocketResponseLocalDataSource) {}
 
 	reset(): void {
-		this.cached = undefined
+		this.store.clear()
 	}
 
 	prepare(body: unknown): PreparedCodexRequest {
@@ -16,14 +17,15 @@ export class CodexWebSocketContinuation {
 		if (!Array.isArray(request.input)) throw new Error("Codex WebSocket input must be an array")
 		const { input: _input, ...settings } = request
 		const settingsKey = fingerprint(settings)
-		const snapshots = request.input.map((item) => CodexWebSocketItemSnapshot.create(item))
+		const snapshots = request.input.map((item) => CodexWebSocketItemSnapshotModel.create(item))
+		const cached = this.store.read()
 		return {
 			request,
 			input: request.input,
 			snapshots,
 			settings: settingsKey,
-			previousResponseId: this.cached?.id,
-			offset: this.cached?.input.length ?? 0,
+			previousResponseId: cached?.id,
+			offset: cached?.input.length ?? 0,
 			fullContextReason: this.getFullContextReason(settingsKey, snapshots),
 		}
 	}
@@ -36,21 +38,22 @@ export class CodexWebSocketContinuation {
 			const item = asJsonObject(value)
 			return item.type !== "reasoning" || Boolean(item.encrypted_content)
 		})
-		this.cached =
+		this.store.write(
 			typeof response.id === "string"
 				? {
 						id: response.id,
 						settings: prepared.settings,
 						input: [
 							...prepared.snapshots,
-							...replayable.map((item) => CodexWebSocketItemSnapshot.create(item)),
+							...replayable.map((item) => CodexWebSocketItemSnapshotModel.create(item)),
 						],
 					}
-				: undefined
+				: undefined,
+		)
 	}
 
-	private getFullContextReason(settings: string, input: CodexWebSocketItemSnapshot[]): string | undefined {
-		const previous = this.cached
+	private getFullContextReason(settings: string, input: CodexWebSocketItemSnapshotModel[]): string | undefined {
+		const previous = this.store.read()
 		if (!previous) return "no cached response"
 		if (previous.settings !== settings) return "request settings changed"
 		if (previous.input.length > input.length) return "history shortened"

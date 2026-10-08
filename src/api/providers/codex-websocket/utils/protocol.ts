@@ -1,14 +1,7 @@
 import { createHash } from "node:crypto"
 import stringify from "safe-stable-stringify"
 
-export type JsonObject = Record<string, unknown>
-export type CodexResponseEvent = JsonObject & { type: string }
-
-export interface CodexWebSocketOptions {
-	headers: Record<string, string>
-	signal: AbortSignal
-	timeoutMs: number
-}
+import type { JsonObject, CodexResponseEvent } from "../models/protocol"
 
 export function asJsonObject(value: unknown): JsonObject {
 	if (!value || typeof value !== "object" || Array.isArray(value)) {

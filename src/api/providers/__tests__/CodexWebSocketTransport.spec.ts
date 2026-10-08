@@ -2,6 +2,7 @@ import { once } from "node:events"
 import { WebSocketServer, type WebSocket } from "ws"
 import nock from "nock"
 import { CodexWebSocketTransport, CodexWebSocketUnavailableError } from "../CodexWebSocketTransport"
+import { CodexWebSocketTransportScope } from "../codex-websocket/scopes/CodexWebSocketTransportScope"
 import { collectStream } from "../../../test-utils/stream"
 
 type Request = Record<string, unknown>
@@ -9,6 +10,7 @@ type Request = Record<string, unknown>
 describe("CodexWebSocketTransport", () => {
 	let server: WebSocketServer
 	let transport: CodexWebSocketTransport
+	let transportScope: CodexWebSocketTransportScope
 	let requests: Request[]
 	let connections: number
 	let reply: (request: Request, socket: WebSocket) => void
@@ -40,7 +42,9 @@ describe("CodexWebSocketTransport", () => {
 		await once(server, "listening")
 		const address = server.address()
 		if (typeof address === "string" || address === null) throw new Error("Missing test server address")
-		transport = CodexWebSocketTransport.create(`ws://127.0.0.1:${address.port}/responses`)
+		transportScope = new CodexWebSocketTransportScope(`ws://127.0.0.1:${address.port}/responses`)
+		transportScope.init()
+		transport = transportScope.transport
 		server.on("connection", (socket) => {
 			connections++
 			socket.on("message", (data) => {
@@ -53,7 +57,7 @@ describe("CodexWebSocketTransport", () => {
 
 	afterEach(async () => {
 		vi.restoreAllMocks()
-		await transport?.dispose()
+		await transportScope?.dispose()
 		nock.disableNetConnect()
 		for (const socket of server.clients) socket.terminate()
 		await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
@@ -351,8 +355,11 @@ describe("CodexWebSocketTransport", () => {
 			socket.send(JSON.stringify({ type: "response.output_text.delta", delta: "Partial" }))
 		const stream = transport.stream(body(), options())
 		await stream.next()
-		await transport.dispose()
+		await transportScope.dispose()
+		expect(() => transportScope.transport).toThrow("not initialized")
 		await expect(stream.next()).rejects.toThrow("closed before response completed")
+		transportScope.init()
+		transport = transportScope.transport
 		reply = (_request, socket) => complete(socket)
 		await collectStream(transport.stream(body(), options()))
 		expect(connections).toBe(2)

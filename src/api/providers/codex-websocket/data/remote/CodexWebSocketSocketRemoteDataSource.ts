@@ -1,12 +1,12 @@
 import { once } from "node:events"
 import WebSocket from "ws"
 
-import type { CodexWebSocketOptions } from "./protocol"
+import type { CodexWebSocketOptions } from "../../models/protocol"
 
 const HANDSHAKE_TIMEOUT_MS = 10_000
 
 /** Owns one socket and its subscriptions, from initialization through terminal close. */
-export class CodexWebSocketSocket {
+export class CodexWebSocketSocketRemoteDataSource {
 	private _socket?: WebSocket
 	private disposeSocket?: () => void
 

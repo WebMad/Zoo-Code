@@ -12,6 +12,7 @@ import { Anthropic } from "@anthropic-ai/sdk"
 import { OPEN_AI_CODEX_SERVICE_TIER_KEY, OpenAiCodexServiceTier, SERVICE_TIER_KEY } from "@roo-code/types"
 import { OpenAiCodexHandler, transformResponsesLiteBody } from "../openai-codex"
 import { CodexWebSocketTransport, CodexWebSocketUnavailableError } from "../CodexWebSocketTransport"
+import { CodexWebSocketTransportScope } from "../codex-websocket/scopes/CodexWebSocketTransportScope"
 import { openAiCodexOAuthManager } from "../../../integrations/openai-codex/oauth"
 import { asyncStreamFrom, collectStream } from "../../../test-utils/stream"
 
@@ -38,6 +39,16 @@ describe("OpenAiCodexHandler WebSocket transport", () => {
 		vitest.restoreAllMocks()
 		vitest.unstubAllEnvs()
 		vitest.unstubAllGlobals()
+	})
+
+	it("initializes the DI scope on the first request rather than in the provider constructor", async () => {
+		const init = vitest.spyOn(CodexWebSocketTransportScope.prototype, "init")
+		vitest.spyOn(CodexWebSocketTransport.prototype, "stream").mockImplementation(() => createCompletedStream())
+		const handler = new OpenAiCodexHandler({ apiModelId: "gpt-5.6-sol", openAiCodexUseWebSocket: true })
+		expect(init).not.toHaveBeenCalled()
+		await collectStream(handler.createMessage("System", []))
+		await collectStream(handler.createMessage("System", []))
+		expect(init).toHaveBeenCalledOnce()
 	})
 
 	it("routes Lite requests through the transport and returns existing usage chunks", async () => {

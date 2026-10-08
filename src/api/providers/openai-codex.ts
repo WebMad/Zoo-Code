@@ -25,7 +25,8 @@ import { ApiStream, ApiStreamUsageChunk } from "../transform/stream"
 import { getModelParams } from "../transform/model-params"
 
 import { BaseProvider } from "./base-provider"
-import { CodexWebSocketTransport, CodexWebSocketUnavailableError } from "./CodexWebSocketTransport"
+import { type CodexWebSocketTransport, CodexWebSocketUnavailableError } from "./CodexWebSocketTransport"
+import { CodexWebSocketTransportScope } from "./codex-websocket/scopes/CodexWebSocketTransportScope"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata, CompletePromptOptions } from "../index"
 import { isMcpTool } from "../../utils/mcp-name"
 import { sanitizeOpenAiCallId } from "../../utils/tool-id"
@@ -131,7 +132,8 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 	protected options: ApiHandlerOptions
 	private readonly providerName = "OpenAI Codex"
 	private client?: OpenAI
-	private readonly webSocketTransport?: CodexWebSocketTransport
+	private readonly webSocketScope?: CodexWebSocketTransportScope
+	private webSocketTransport?: CodexWebSocketTransport
 	// Complete response output array
 	private lastResponseOutput: any[] | undefined
 	// Last top-level response id
@@ -185,7 +187,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 		super()
 		this.options = options
 		if (options.openAiCodexUseWebSocket ?? DEFAULT_OPEN_AI_CODEX_USE_WEBSOCKET) {
-			this.webSocketTransport = CodexWebSocketTransport.create()
+			this.webSocketScope = new CodexWebSocketTransportScope()
 		}
 		// Generate a new session ID for standalone handler usage (fallback)
 		this.sessionId = uuidv7()
@@ -254,6 +256,10 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 		this.sawTextDeltaInCurrentResponse = false
 		this.sawSdkEventInCurrentResponse = false
 		this.streamedToolCallIds.clear()
+		if (this.webSocketScope && !this.webSocketTransport) {
+			this.webSocketScope.init()
+			this.webSocketTransport = this.webSocketScope.transport
+		}
 		if (metadata?.suppressPreviousResponseId) this.webSocketTransport?.resetContinuation()
 
 		// Get access token from OAuth manager

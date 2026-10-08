@@ -1,23 +1,24 @@
-import { fingerprint, asJsonObject, type JsonObject } from "./protocol"
+import type { JsonObject } from "./protocol"
+import { fingerprint, asJsonObject } from "../utils/protocol"
 
 /** Retain hashes only; diagnostic logs must never expose messages, arguments or encrypted reasoning. */
-export class CodexWebSocketItemSnapshot {
+export class CodexWebSocketItemSnapshotModel {
 	private constructor(
 		readonly hash: string,
 		readonly type: string,
 		private readonly fields: Record<string, string>,
 	) {}
 
-	static create(value: unknown): CodexWebSocketItemSnapshot {
-		const item = CodexWebSocketItemSnapshot.normalize(value)
-		return new CodexWebSocketItemSnapshot(
+	static create(value: unknown): CodexWebSocketItemSnapshotModel {
+		const item = CodexWebSocketItemSnapshotModel.normalize(value)
+		return new CodexWebSocketItemSnapshotModel(
 			fingerprint(item),
 			String(item.type ?? "message"),
 			Object.fromEntries(Object.entries(item).map(([key, field]) => [key, fingerprint(field)])),
 		)
 	}
 
-	changedFields(other: CodexWebSocketItemSnapshot): string[] {
+	changedFields(other: CodexWebSocketItemSnapshotModel): string[] {
 		return Object.keys({ ...this.fields, ...other.fields }).filter((key) => this.fields[key] !== other.fields[key])
 	}
 
