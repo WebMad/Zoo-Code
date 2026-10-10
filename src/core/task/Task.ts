@@ -1852,9 +1852,14 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// has to see and stalling a hands-free session. Leaving the message
 		// unclaimed lets the policy decision stand and keeps the message queued.
 		const queueMayAnswerThisAsk = !(blanketDenyEngaged && type === "command")
+		// A queued message must not short-circuit protected asks (e.g.
+		// DCG-blocked commands): claiming one here skips checkAutoApproval, and
+		// the drain below would auto-approve what protection intentionally
+		// leaves pending for explicit user approval.
 		const queuedMessage =
 			partial === true ||
 			type === "command_output" ||
+			isProtected ||
 			!queueMayAnswerThisAsk ||
 			!this.mayDrainQueuedMessageForAsk()
 				? undefined
@@ -2255,10 +2260,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					// suggestion click that was incorrectly queued due to UI state), consume it
 					// immediately so the task doesn't hang. Command asks under blanket deny are
 					// excluded (`queueMayAnswerThisAsk`): a queued message must never stand in
-					// for the explicit approval the policy withheld.
+					// for the explicit approval the policy withheld. Protected asks are exempt
+					// too: like the pre-block drain above, they must wait for explicit user
+					// approval.
 					if (
 						queueMayAnswerThisAsk &&
 						shouldDrainQueuedMessageForAsk &&
+						!isProtected &&
 						!queuedCommandPolicyCheck &&
 						this.mayDrainQueuedMessageForAsk()
 					) {
