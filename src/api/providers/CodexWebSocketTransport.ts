@@ -70,18 +70,24 @@ export class CodexWebSocketTransport {
 		request: CodexWebSocketRequestManager,
 		response: CodexWebSocketResponseManager,
 	): AsyncGenerator<CodexResponseEvent> {
+		const socket = request.socket
 		request.refreshTimeout()
-		this.send(request.socket, prepared, headers, prepared.fullContextReason === undefined)
+		this.send(socket, prepared, headers, prepared.fullContextReason === undefined)
 		for await (const [data] of request.events) {
-			request.refreshTimeout()
+			request.signal.throwIfAborted()
+			// Consumer work between yields is not socket inactivity.
+			request.clearTimeout()
 			const event = parseResponseEvent(String(data))
 			if (response.accept(event) === "retry") {
-				this.send(request.socket, prepared, headers, false, "server cache miss")
+				request.refreshTimeout()
+				this.send(socket, prepared, headers, false, "server cache miss")
 				continue
 			}
-			if (response.completed) request.clearTimeout()
 			yield event
 			if (response.completed) return
+			request.signal.throwIfAborted()
+			// Drain queued events even if the socket closed while the consumer was paused.
+			if (socket.readyState === socket.OPEN) request.refreshTimeout()
 		}
 		throw new Error("Codex WebSocket closed before response completed; retry the request")
 	}

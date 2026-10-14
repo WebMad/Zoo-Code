@@ -359,12 +359,28 @@ describe("CodexWebSocketTransport", () => {
 		}
 		const stream = transport.stream(body(), { ...options(), signal: controller.signal })
 		expect((await stream.next()).value).toMatchObject({ delta: "Partial" })
-		controller.abort()
-		await expect(stream.next()).rejects.toThrow()
+		const reason = new Error("Stopped")
+		controller.abort(reason)
+		await expect(stream.next()).rejects.toBe(reason)
 		reply = (_request, socket) => complete(socket)
 		await collectStream(transport.stream(body(), options()))
 		expect(connections).toBe(2)
 		expect(requests[1].previous_response_id).toBeUndefined()
+	})
+
+	it("preserves Stop when cancellation races with receiving completion", async () => {
+		const controller = new AbortController()
+		const reason = new Error("Stopped")
+		reply = (_request, socket) => {
+			const scope = transport["requestScope"]
+			if (!scope) throw new Error("Missing active request scope")
+			// The iterator already received this frame, but the consumer has not resumed yet.
+			scope.requestManager.socket.once("message", () => controller.abort(reason))
+			complete(socket)
+		}
+		await expect(collectStream(transport.stream(body(), { ...options(), signal: controller.signal }))).rejects.toBe(
+			reason,
+		)
 	})
 
 	it("disposes an active stream and reconnects with full context on the next request", async () => {
@@ -392,17 +408,20 @@ describe("CodexWebSocketTransport", () => {
 		expect(requests[1].previous_response_id).toBeUndefined()
 	})
 
-	it("disposes request deadlines while the consumer is paused on a partial response", async () => {
+	it("disposes request deadlines while waiting for more response events", async () => {
 		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
 		reply = (_request, socket) =>
 			socket.send(JSON.stringify({ type: "response.output_text.delta", delta: "Partial" }))
 		const stream = transport.stream(body(), options())
 		try {
 			await stream.next()
+			expect(vi.getTimerCount()).toBe(0)
+			const next = expect(stream.next()).rejects.toThrow("closed before response completed")
+			await vi.advanceTimersByTimeAsync(0)
 			expect(vi.getTimerCount()).toBe(1)
 			await transport.dispose()
 			expect(vi.getTimerCount()).toBe(0)
-			await expect(stream.next()).rejects.toThrow("closed before response completed")
+			await next
 		} finally {
 			await stream.return(undefined)
 			vi.useRealTimers()
@@ -411,7 +430,9 @@ describe("CodexWebSocketTransport", () => {
 
 	it("bounds a silent response with a timeout", async () => {
 		reply = () => {}
-		await expect(collectStream(transport.stream(body(), { ...options(), timeoutMs: 100 }))).rejects.toThrow()
+		await expect(collectStream(transport.stream(body(), { ...options(), timeoutMs: 100 }))).rejects.toThrow(
+			"Codex WebSocket stream timed out",
+		)
 	})
 
 	it.each(["null", "[]", "{}", '{"type":42}', "invalid JSON"])(
@@ -453,6 +474,40 @@ describe("CodexWebSocketTransport", () => {
 			await collectStream(transport.stream(body(), options()))
 			expect(connections).toBe(1)
 			expect(requests[1].previous_response_id).toBe("resp_1")
+		} finally {
+			await stream.return(undefined)
+			vi.useRealTimers()
+		}
+	})
+
+	it.each([false, true])("preserves queued completion during a consumer pause (server closes: %s)", async (close) => {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+		reply = (_request, socket) =>
+			socket.send(JSON.stringify({ type: "response.output_text.delta", delta: "Partial" }))
+		const stream = transport.stream(body(), { ...options(), timeoutMs: 100 })
+		try {
+			expect((await stream.next()).value).toMatchObject({ delta: "Partial" })
+			const scope = transport["requestScope"]
+			if (!scope) throw new Error("Missing active request scope")
+			const received = once(scope.requestManager.socket, "message")
+			const serverSocket = [...server.clients][0]
+			complete(serverSocket)
+			await received
+			if (close) {
+				const closed = once(scope.requestManager.socket, "close")
+				serverSocket.close()
+				await closed
+			}
+			await vi.advanceTimersByTimeAsync(1_000)
+			expect((await stream.next()).value).toMatchObject({
+				type: "response.completed",
+				response: { id: "resp_1", usage: { input_tokens: 1, output_tokens: 2 } },
+			})
+			expect((await stream.next()).done).toBe(true)
+			reply = (_request, socket) => complete(socket)
+			await collectStream(transport.stream(body(), options()))
+			expect(connections).toBe(close ? 2 : 1)
+			expect(requests[1].previous_response_id).toBe(close ? undefined : "resp_1")
 		} finally {
 			await stream.return(undefined)
 			vi.useRealTimers()
