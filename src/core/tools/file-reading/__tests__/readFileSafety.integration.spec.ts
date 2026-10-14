@@ -8,7 +8,9 @@ import mammoth from "mammoth"
 import type { ClineSayTool, ReadFileToolParams } from "@roo-code/types"
 import type { Task } from "../../../task/Task"
 import { checkAutoApproval } from "../../../auto-approval"
-import { readFileTool } from "../../ReadFileTool"
+import { ReadFileTool } from "../ReadFileTool"
+
+const readFileTool = new ReadFileTool()
 import * as imageHelpers from "../../helpers/imageHelpers"
 import { RooIgnoreController } from "../../../ignore/RooIgnoreController"
 import { ReadFileCancellation } from "../ReadFileCancellation"
@@ -417,7 +419,7 @@ describe("public file reader safety", () => {
 		expect(result).not.toContain("unapproved cell")
 	})
 
-	it("notebook extraction uses approved bytes without changing historical line numbering", async () => {
+	it("notebook extraction uses approved bytes without double-numbering raw document text", async () => {
 		const notebook = path.join(workspace, "book.ipynb")
 		const replacement = path.join(directory, "other.ipynb")
 		for (const [file, value] of [
@@ -432,7 +434,7 @@ describe("public file reader safety", () => {
 
 		const result = await read({ path: "book.ipynb" })
 
-		expect(result).toContain("1 | 1 | approved code")
+		expect(result).toContain("1 | approved code")
 		expect(result).not.toContain("unapproved code")
 		expect(fs.readFile).not.toHaveBeenCalled()
 	})
@@ -447,7 +449,7 @@ describe("public file reader safety", () => {
 
 		const result = await read({ path: "document.pdf" })
 
-		expect(result).toContain("1 | 1 | approved PDF text")
+		expect(result).toContain("1 | approved PDF text")
 		expect(result).not.toContain("unapproved PDF text")
 		expect(fs.readFile).not.toHaveBeenCalled()
 	})
@@ -462,7 +464,7 @@ describe("public file reader safety", () => {
 
 		const result = await read({ path: "document.docx" })
 
-		expect(result).toContain("1 | 1 | approved DOCX text")
+		expect(result).toContain("1 | approved DOCX text")
 		expect(result).not.toContain("unapproved DOCX text")
 		expect(fs.readFile).not.toHaveBeenCalled()
 	})
@@ -533,7 +535,9 @@ describe("public file reader safety", () => {
 
 		expect(manualApproval).not.toHaveBeenCalled()
 		expect(approvalMessages[0]).toMatchObject({ isOutsideWorkspace: false })
-		expect(callbacks.pushToolResult).toHaveBeenCalledWith("File: internal.txt\n1 | first line\n2 | second line")
+		expect(callbacks.pushToolResult).toHaveBeenCalledExactlyOnceWith([
+			{ type: "text", text: "File: internal.txt\n1 | first line\n2 | second line" },
+		])
 		expect(fs.readFile).not.toHaveBeenCalled()
 	})
 
@@ -1251,7 +1255,11 @@ describe("public file reader safety", () => {
 				callbacks,
 			)
 
-			expect(callbacks.pushToolResult).toHaveBeenCalledWith("File: pinned.txt\n2 | second\n3 | third")
+			expect(callbacks.pushToolResult).toHaveBeenCalledExactlyOnceWith(
+				legacy
+					? "File: pinned.txt\n2 | second\n3 | third"
+					: [{ type: "text", text: "File: pinned.txt\n2 | second\n3 | third" }],
+			)
 			expect(fs.readFile).not.toHaveBeenCalled()
 			expect(task.didToolFailInCurrentTurn).toBe(false)
 		},
